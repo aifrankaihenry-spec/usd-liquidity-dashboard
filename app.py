@@ -33,14 +33,16 @@ FRED_SERIES = {
     "dxy":              "TWEXBMTH",
     "vix":              "VIXCLS",
     "repo_gc":          "TGCRRATE",     # Tri-party GC Repo Rate
+
+    # ⬇️ 这里是新增的三大股指（FRED 代码）
+    "sp500":            "SP500",        # S&P 500 :contentReference[oaicite:0]{index=0}
+    "nasdaq":           "NASDAQCOM",    # Nasdaq Composite :contentReference[oaicite:1]{index=1}
+    "dow":              "DJIA",         # Dow Jones Industrial Average :contentReference[oaicite:2]{index=2}
 }
 
-YF_SYMBOLS = {
-    "sp500": "^GSPC",
-    "nasdaq": "^IXIC",
-    "dow": "^DJI",
-    "russell2000": "^RUT",
-}
+
+YF_SYMBOLS = {}
+
 
 # ================================
 # 流动性评分配置
@@ -399,4 +401,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
