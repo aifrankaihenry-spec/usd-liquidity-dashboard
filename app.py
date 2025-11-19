@@ -1,12 +1,10 @@
 # app.py
-import os
-from datetime import date
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
-from pandas_datareader import data as pdr
 import streamlit as st
+
 
 # ================================
 # 基本设置
@@ -63,16 +61,41 @@ LIQUIDITY_CONFIG = {
 # ================================
 @st.cache_data(show_spinner=False)
 def fetch_fred_series(series_dict, start_date, end_date):
-    data = {}
+    """
+    直接从 FRED 的 CSV 接口拉数据，不用 pandas_datareader。
+    URL 形式：https://fred.stlouisfed.org/graph/fredgraph.csv?id=CODE
+    """
+    series_list = []
+
     for name, code in series_dict.items():
         try:
-            df = pdr.DataReader(code, "fred", start_date, end_date)
-            s = df[code].copy()
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={code}"
+            df = pd.read_csv(url)
+
+            # FRED CSV 默认列：DATE, CODE
+            if "DATE" not in df.columns or code not in df.columns:
+                st.warning(f"FRED 指标 {name} ({code}) CSV 格式异常，列为：{df.columns}")
+                continue
+
+            df["DATE"] = pd.to_datetime(df["DATE"])
+            df.set_index("DATE", inplace=True)
+
+            # 按日期截取
+            s = df[code].loc[
+                (df.index >= pd.to_datetime(start_date)) &
+                (df.index <= pd.to_datetime(end_date))
+            ].copy()
             s.name = name
-            data[name] = s
+            series_list.append(s)
+
         except Exception as e:
             st.warning(f"FRED 指标 {name} ({code}) 获取失败：{e}")
-    return pd.DataFrame(data)
+
+    if not series_list:
+        return pd.DataFrame()
+
+    return pd.concat(series_list, axis=1)
+
 
 
 @st.cache_data(show_spinner=False)
