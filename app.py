@@ -1,13 +1,12 @@
 # app.py
 import os
-from datetime import date   # ← 必须有这一行！！
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 import streamlit as st
-
-
 
 # ================================
 # 基本设置
@@ -60,13 +59,13 @@ LIQUIDITY_CONFIG = {
 }
 
 # ================================
-# 工具函数
+# 工具函数：抓数据
 # ================================
 @st.cache_data(show_spinner=False)
 def fetch_fred_series(series_dict, start_date, end_date):
     """
     直接从 FRED 的 CSV 接口拉数据，不用 pandas_datareader。
-    URL 形式：https://fred.stlouisfed.org/graph/fredgraph.csv?id=CODE
+    URL: https://fred.stlouisfed.org/graph/fredgraph.csv?id=CODE
     """
     series_list = []
 
@@ -75,15 +74,13 @@ def fetch_fred_series(series_dict, start_date, end_date):
             url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={code}"
             df = pd.read_csv(url)
 
-            # FRED CSV 默认列：DATE, CODE
             if "DATE" not in df.columns or code not in df.columns:
-                st.warning(f"FRED 指标 {name} ({code}) CSV 格式异常，列为：{df.columns}")
+                st.warning(f"FRED 指标 {name} ({code}) CSV 列异常：{df.columns}")
                 continue
 
             df["DATE"] = pd.to_datetime(df["DATE"])
             df.set_index("DATE", inplace=True)
 
-            # 按日期截取
             s = df[code].loc[
                 (df.index >= pd.to_datetime(start_date)) &
                 (df.index <= pd.to_datetime(end_date))
@@ -98,7 +95,6 @@ def fetch_fred_series(series_dict, start_date, end_date):
         return pd.DataFrame()
 
     return pd.concat(series_list, axis=1)
-
 
 
 @st.cache_data(show_spinner=False)
@@ -123,6 +119,7 @@ def fetch_yfinance_series(symbols_dict, start_date, end_date):
 
     if not series_list:
         return pd.DataFrame()
+
     return pd.concat(series_list, axis=1)
 
 
@@ -140,20 +137,28 @@ def build_panel(start_date, end_date):
     )
     return all_df
 
-
 # ================================
 # 画图函数
 # ================================
 def plot_series(df, columns, title="", ylabel="", rolling=None):
     fig, ax = plt.subplots(figsize=(10, 4))
+
+    plotted_any = False
     for col in columns:
         if col not in df.columns:
             st.warning(f"列 {col} 不存在，跳过")
             continue
-        series = df[col]
+        series = df[col].dropna()
+        if series.empty:
+            continue
         if rolling:
             series = series.rolling(rolling).mean()
         ax.plot(series.index, series.values, label=col)
+        plotted_any = True
+
+    if not plotted_any:
+        st.warning(f"{title} 没有可画的数据")
+        return
 
     ax.set_title(title)
     ax.set_xlabel("Date")
@@ -169,13 +174,19 @@ def plot_onrrp_tga(df):
         st.warning("缺少 on_rrp 或 tga，无双轴图")
         return
 
+    ser_on = df["on_rrp"].dropna()
+    ser_tga = df["tga"].dropna()
+    if ser_on.empty or ser_tga.empty:
+        st.warning("on_rrp 或 tga 数据为空，无法画双轴图")
+        return
+
     fig, ax1 = plt.subplots(figsize=(10, 4))
-    ax1.plot(df.index, df["on_rrp"], label="ON RRP", color="tab:blue", linewidth=2)
+    ax1.plot(ser_on.index, ser_on.values, label="ON RRP", color="tab:blue", linewidth=2)
     ax1.set_ylabel("ON RRP", color="tab:blue")
     ax1.tick_params(axis="y", labelcolor="tab:blue")
 
     ax2 = ax1.twinx()
-    ax2.plot(df.index, df["tga"], label="TGA", color="tab:orange", linewidth=2, linestyle="--")
+    ax2.plot(ser_tga.index, ser_tga.values, label="TGA", color="tab:orange", linewidth=2, linestyle="--")
     ax2.set_ylabel("TGA", color="tab:orange")
     ax2.tick_params(axis="y", labelcolor="tab:orange")
 
@@ -192,6 +203,10 @@ def plot_equity_indices(df):
         return
 
     data = df[available].dropna(how="all")
+    if data.empty:
+        st.warning("指数数据为空")
+        return
+
     norm = data / data.iloc[0]
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -204,13 +219,15 @@ def plot_equity_indices(df):
     fig.tight_layout()
     st.pyplot(fig)
 
-
 # ================================
 # 流动性评分
 # ================================
 def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
 
     valid_df = df.dropna(how="all")
+    if valid_df.empty:
+        raise ValueError("没有有效数据用于评分")
+
     end_date = valid_df.index.max()
     start_date = end_date - pd.Timedelta(days=window_days)
     window_df = df.loc[start_date:end_date]
@@ -226,14 +243,14 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
 
         series = window_df[col].dropna()
         if len(series) < 30:
-            st.info(f"[评分提示] {col} 数据不足")
+            st.info(f"[评分提示] {col} 数据不足（<30）")
             continue
 
         mean = series.mean()
         std = series.std()
 
         if std == 0 or np.isnan(std):
-            st.info(f"[评分提示] {col} std=0")
+            st.info(f"[评分提示] {col} 标准差为 0 或 NaN，跳过")
             continue
 
         z = (series.iloc[-1] - mean) / std
@@ -250,13 +267,11 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
             "weight": weight,
         })
 
-        # ✅ 这两行非常重要：把指标贡献加进总和
         weighted_z += z_tight * weight
         total_weight += weight
 
-    # ✅ 循环结束后，检查是否有任何指标参与评分
     if total_weight == 0:
-        raise ValueError("没有可用指标计算评分（所有指标都被跳过了）")
+        raise ValueError("没有可用指标计算评分（所有配置的指标都被跳过了）")
 
     score = 50 - 10 * (weighted_z / total_weight)
     score = max(0, min(100, score))
@@ -272,8 +287,6 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
 
     return score, label, detail_df, (start_date, end_date)
 
-
-
 # ================================
 # Streamlit 主程序
 # ================================
@@ -288,10 +301,18 @@ def main():
         end_date = st.date_input("结束日期", END_DEFAULT)
         window_days = st.slider("评分窗口（天）", 180, 730, 365)
 
+        if start_date >= end_date:
+            st.error("开始日期必须早于结束日期")
+            return
+
     st.info("数据正在获取...")
     all_df = build_panel(start_date, end_date)
+    if all_df.empty:
+        st.error("数据获取失败：all_df 为空")
+        return
     st.success("数据更新完成")
 
+    st.subheader("最新一行数据")
     st.dataframe(all_df.tail(1))
 
     # =======================
@@ -300,24 +321,51 @@ def main():
     st.header("📊 流动性 & 利率")
     col1, col2 = st.columns(2)
     with col1:
-        plot_series(all_df, ["bank_reserves", "fed_balance_sheet"],
-                    title="Bank Reserves vs Fed Balance Sheet",
-                    ylabel="Millions", rolling=7)
+        plot_series(
+            all_df,
+            ["bank_reserves", "fed_balance_sheet"],
+            title="Bank Reserves vs Fed Balance Sheet",
+            ylabel="Millions",
+            rolling=7,
+        )
     with col2:
         plot_onrrp_tga(all_df)
 
     col3, col4 = st.columns(2)
     with col3:
-        plot_series(all_df, ["sofr", "t_bill_1m", "t_bill_3m", "repo_gc"],
-                    title="SOFR / T-bill / Repo", ylabel="Rate (%)", rolling=7)
+        plot_series(
+            all_df,
+            ["sofr", "t_bill_1m", "t_bill_3m", "repo_gc"],
+            title="SOFR / T-bill / Repo",
+            ylabel="Rate (%)",
+            rolling=7,
+        )
     with col4:
-        plot_series(all_df, ["hy_spread"], title="HY Spread", ylabel="bps", rolling=7)
+        plot_series(
+            all_df,
+            ["hy_spread"],
+            title="HY Spread",
+            ylabel="bps",
+            rolling=7,
+        )
 
     col5, col6 = st.columns(2)
     with col5:
-        plot_series(all_df, ["dxy"], title="DXY", ylabel="Index", rolling=7)
+        plot_series(
+            all_df,
+            ["dxy"],
+            title="DXY",
+            ylabel="Index",
+            rolling=7,
+        )
     with col6:
-        plot_series(all_df, ["vix"], title="VIX", ylabel="Index", rolling=7)
+        plot_series(
+            all_df,
+            ["vix"],
+            title="VIX",
+            ylabel="Index",
+            rolling=7,
+        )
 
     st.header("📈 美股主要指数（归一化）")
     plot_equity_indices(all_df)
@@ -327,16 +375,22 @@ def main():
     # =======================
     st.header("🧠 宏观流动性评分")
 
-    score, label, detail_df, (s, e) = compute_liquidity_score(all_df, LIQUIDITY_CONFIG, window_days)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("流动性评分", f"{score:.1f}")
-    with c2:
-        st.metric("状态", label)
-    st.caption(f"评分区间：{s.date()} → {e.date()}")
+    try:
+        score, label, detail_df, (s, e) = compute_liquidity_score(
+            all_df, LIQUIDITY_CONFIG, window_days
+        )
 
-    st.dataframe(detail_df)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("流动性评分", f"{score:.1f}")
+        with c2:
+            st.metric("状态", label)
+
+        st.caption(f"评分区间：{s.date()} → {e.date()}")
+        st.dataframe(detail_df)
+
+    except Exception as e:
+        st.error(f"无法计算流动性评分：{e}")
 
 if __name__ == "__main__":
     main()
-
