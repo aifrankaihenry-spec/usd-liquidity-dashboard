@@ -63,10 +63,6 @@ LIQUIDITY_CONFIG = {
 # ================================
 @st.cache_data(show_spinner=False)
 def fetch_fred_series(series_dict, start_date, end_date):
-    """
-    直接从 FRED 的 CSV 接口拉数据，不用 pandas_datareader。
-    URL: https://fred.stlouisfed.org/graph/fredgraph.csv?id=CODE
-    """
     series_list = []
 
     for name, code in series_dict.items():
@@ -74,13 +70,23 @@ def fetch_fred_series(series_dict, start_date, end_date):
             url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={code}"
             df = pd.read_csv(url)
 
-            if "DATE" not in df.columns or code not in df.columns:
-                st.warning(f"FRED 指标 {name} ({code}) CSV 列异常：{df.columns}")
+            # --- 修复：兼容 FRED 两种 CSV 格式 ---
+            if "DATE" in df.columns:
+                df.rename(columns={"DATE": "date"}, inplace=True)
+            elif "observation_date" in df.columns:
+                df.rename(columns={"observation_date": "date"}, inplace=True)
+            else:
+                st.warning(f"FRED 指标 {name} ({code}) CSV 缺少 DATE/observation_date，列为：{df.columns}")
                 continue
 
-            df["DATE"] = pd.to_datetime(df["DATE"])
-            df.set_index("DATE", inplace=True)
+            if code not in df.columns:
+                st.warning(f"FRED 指标 {name} ({code}) 缺少主数据列，列为：{df.columns}")
+                continue
 
+            df["date"] = pd.to_datetime(df["date"])
+            df.set_index("date", inplace=True)
+
+            # 按日期过滤
             s = df[code].loc[
                 (df.index >= pd.to_datetime(start_date)) &
                 (df.index <= pd.to_datetime(end_date))
@@ -93,7 +99,6 @@ def fetch_fred_series(series_dict, start_date, end_date):
 
     if not series_list:
         return pd.DataFrame()
-
     return pd.concat(series_list, axis=1)
 
 
@@ -394,3 +399,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
