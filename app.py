@@ -38,7 +38,8 @@ FRED_SERIES = {
     "sp500":            "SP500",        # S&P 500 :contentReference[oaicite:0]{index=0}
     "nasdaq":           "NASDAQCOM",    # Nasdaq Composite :contentReference[oaicite:1]{index=1}
     "dow":              "DJIA",         # Dow Jones Industrial Average :contentReference[oaicite:2]{index=2}
-    "russell2000": "RUTSL",
+    "russell2000": "RU2000PR",
+
 
 }
 
@@ -403,6 +404,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
