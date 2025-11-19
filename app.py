@@ -216,8 +216,8 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
     window_df = df.loc[start_date:end_date]
 
     z_details = []
-    total_weight = 0
-    weighted_z = 0
+    total_weight = 0.0
+    weighted_z = 0.0
 
     for col, meta in config.items():
         if col not in window_df.columns:
@@ -250,8 +250,13 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
             "weight": weight,
         })
 
+        # ✅ 这两行非常重要：把指标贡献加进总和
         weighted_z += z_tight * weight
         total_weight += weight
+
+    # ✅ 循环结束后，检查是否有任何指标参与评分
+    if total_weight == 0:
+        raise ValueError("没有可用指标计算评分（所有指标都被跳过了）")
 
     score = 50 - 10 * (weighted_z / total_weight)
     score = max(0, min(100, score))
@@ -266,6 +271,7 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
     detail_df = pd.DataFrame(z_details).set_index("indicator")
 
     return score, label, detail_df, (start_date, end_date)
+
 
 
 # ================================
@@ -333,3 +339,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
