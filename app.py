@@ -1,9 +1,12 @@
 # app.py
+import os
+from datetime import date   # ← 必须有这一行！！
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 import streamlit as st
+
 
 
 # ================================
