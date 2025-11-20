@@ -232,6 +232,7 @@ def plot_equity_indices(df):
     fig.tight_layout()
     st.pyplot(fig)
 
+
 # ================================
 # 流动性评分
 # ================================
@@ -320,6 +321,7 @@ def main():
 
     st.info("数据正在获取...")
     all_df = build_panel(start_date, end_date)
+    
     if all_df.empty:
         st.error("数据获取失败：all_df 为空")
         return
@@ -327,6 +329,8 @@ def main():
 
     st.subheader("最新一行数据")
     st.dataframe(all_df.tail(1))
+    st.write("列名：", list(all_df.columns))
+
 
     # =======================
     # 图表区
@@ -407,6 +411,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
