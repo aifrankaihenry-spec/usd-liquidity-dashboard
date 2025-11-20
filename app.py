@@ -38,13 +38,16 @@ FRED_SERIES = {
     "sp500":            "SP500",        # S&P 500 :contentReference[oaicite:0]{index=0}
     "nasdaq":           "NASDAQCOM",    # Nasdaq Composite :contentReference[oaicite:1]{index=1}
     "dow":              "DJIA",         # Dow Jones Industrial Average :contentReference[oaicite:2]{index=2}
-    "russell2000": "RU2000PR",
+
 
 
 }
 
 
-YF_SYMBOLS = {}
+YF_SYMBOLS = {
+    "russell2000": "^RUT",   # Russell 2000 指数 from Yahoo
+}
+
 
 
 # ================================
@@ -404,6 +407,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
