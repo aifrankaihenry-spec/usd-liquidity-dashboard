@@ -329,7 +329,7 @@ def main():
 
     st.subheader("最新一行数据")
     st.dataframe(all_df.tail(1))
-    st.write("列名：", list(all_df.columns))
+    
 
 
     # =======================
@@ -411,6 +411,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
