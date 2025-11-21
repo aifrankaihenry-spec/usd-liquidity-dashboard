@@ -9,12 +9,13 @@ import streamlit as st
 # ================================
 # Basic Settings
 # ================================
-# 使用通用样式，无需安装 seaborn
+# 使用通用样式
 plt.style.use('ggplot') 
 plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
-START_DEFAULT = date(2018, 1, 1)
+# --- 为了支持 7 年回测，默认开始日期设为 2010 年 ---
+START_DEFAULT = date(2010, 1, 1)
 END_DEFAULT = date.today()
 
 OUTPUT_DIR = "liquidity_charts"
@@ -138,21 +139,22 @@ def build_panel(start_date, end_date):
     return all_df
 
 # ================================
-# Plotting Functions
+# Plotting Functions (Enhanced with Z-Window)
 # ================================
-def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, title_prefix=""):
+def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, z_window=252, title_prefix=""):
     """
-    Plot Overlay with Divergence Analysis (Z-Score Gap)
-    Fix: Larger font size & compatible marker symbols.
+    Overlay plot with Divergence Analysis (Z-Score Gap).
+    Accepts z_window for customizable lookback.
     """
     if indicator_col not in df.columns or target_col not in df.columns:
         st.warning(f"Missing data: {indicator_col} or {target_col}")
         return
 
     plot_df = df[[indicator_col, target_col]].dropna()
-    if plot_df.empty: return
+    if plot_df.empty:
+        return
 
-    # --- 1. 计算滚动相关性 ---
+    # 1. Rolling Correlation
     rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
     valid_corr = rolling_corr.dropna()
     
@@ -163,8 +165,8 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
         latest_corr = valid_corr.iloc[-1]
         last_date = valid_corr.index[-1]
 
-    # --- 2. 计算背离度 (Z-Score Gap) ---
-    lookback = 252 
+    # 2. Z-Score Gap Calculation
+    lookback = z_window
     if len(plot_df) > lookback:
         subset = plot_df.iloc[-lookback:]
     else:
@@ -177,31 +179,29 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     z_target = calc_z(subset[target_col])
     z_indic = calc_z(subset[indicator_col])
     
-    # 根据相关性方向调整 Gap 计算公式
     corr_sign = np.sign(latest_corr) if latest_corr != 0 else 1
     gap = z_target - (corr_sign * z_indic)
     
-    # 定义状态 (使用通用字符 ● 代替 Emoji，防止不显示)
-    # 同时也加深了颜色代码，使其更清晰
+    # Gap Status Logic
     if gap > 1.5:
-        gap_status = "OVERVALUED ●" 
-        gap_color = "#D62728"  # 深红色
+        gap_status = "OVERVALUED ●"
+        gap_color = "#D62728"
     elif gap < -1.5:
         gap_status = "UNDERVALUED ●"
-        gap_color = "#2CA02C"  # 深绿色
+        gap_color = "#2CA02C"
     else:
         gap_status = "Fair Value"
-        gap_color = "#333333"  # 深灰色
+        gap_color = "#333333"
 
-    # --- 3. 画图 ---
+    # 3. Plotting
     fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
                                        gridspec_kw={'height_ratios': [2, 1]})
     
     color_ind = 'tab:blue'
     color_target = 'tab:gray'
     
-    # 上半部分
-    ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=2) # 线条加粗到2
+    # Top Chart
+    ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=2)
     ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold', fontsize=12)
     ax1.tick_params(axis='y', labelcolor=color_ind)
     
@@ -210,22 +210,19 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     ax2.set_ylabel(target_col, color=color_target, fontweight='bold', fontsize=12)
     ax2.tick_params(axis='y', labelcolor=color_target)
     
-    # 标题
     corr_str = f"{latest_corr:+.2f}"
     title_text = f"{title_prefix} {indicator_col} vs {target_col} (Corr: {corr_str})"
-    ax1.set_title(title_text, fontsize=18, fontweight='bold', pad=20) # 标题也加大了
+    ax1.set_title(title_text, fontsize=18, fontweight='bold', pad=20)
     
-    # === 修改重点：加大字号的背离提示框 ===
-    gap_text = f"Z-Score Gap (1Y): {gap:+.2f}σ  [{gap_status}]"
-    
-    # fontsize=18 (加大), 使用 bbox 增加背景框可视度
+    # Z-Score Gap Label (Large Font)
+    gap_text = f"Z-Score Gap ({lookback}d): {gap:+.2f}σ  [{gap_status}]"
     ax1.text(0.5, 0.92, gap_text, transform=ax1.transAxes, ha='center', 
              fontsize=18, fontweight='heavy', color=gap_color, 
              bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray', boxstyle='round,pad=0.5'))
 
     ax1.grid(True, linestyle='--', alpha=0.3)
 
-    # 下半部分
+    # Bottom Chart
     if not valid_corr.empty:
         ax_corr.plot(valid_corr.index, valid_corr, color='black', linewidth=1)
         ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr > 0), color='green', alpha=0.3)
@@ -245,7 +242,6 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     ax_corr.set_ylim(-1.1, 1.1)
     ax_corr.axhline(0, color='black', linestyle='-', linewidth=0.5)
     ax_corr.grid(True, linestyle='--', alpha=0.3)
-    
     plt.subplots_adjust(hspace=0.1)
     st.pyplot(fig)
 
@@ -309,13 +305,13 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
     strength = abs(deviation) * 2
     
     if score >= 60:
-        signal, color, sentiment = "LONG (Buy)", "green", "Bullish / Liquidity Supported"
+        signal, color, sentiment = "LONG IWM", "green", "Bullish / Liquidity Supported"
     elif score >= 52:
-        signal, color, sentiment = "WEAK LONG", "lightgreen", "Mildly Bullish"
+        signal, color, sentiment = "WEAK LONG IWM", "lightgreen", "Mildly Bullish"
     elif score <= 40:
-        signal, color, sentiment = "SHORT (Sell)", "red", "Bearish / Liquidity Drain"
+        signal, color, sentiment = "SHORT IWM", "red", "Bearish / Liquidity Drain"
     elif score <= 48:
-        signal, color, sentiment = "WEAK SHORT", "lightcoral", "Mildly Bearish"
+        signal, color, sentiment = "WEAK SHORT IWM", "lightcoral", "Mildly Bearish"
     else:
         signal, color, sentiment = "NEUTRAL", "gray", "Choppy / No Clear Trend"
 
@@ -336,7 +332,7 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
             "sentiment": sentiment, "driver": dominant_driver}
 
 # ================================
-# Analysis Text Generators (Safe Version)
+# Analysis Text Generators (Smart & Safe)
 # ================================
 def _get_driver_narrative(driver):
     mapping = {
@@ -361,19 +357,11 @@ def _render_indicator_card(title, tag, value, distinct_impact, watch_item):
         st.markdown(f"**💥 Impact on IWM:** {distinct_impact}")
         st.markdown(f"**👀 Watch:** *{watch_item}*")
 
-# ================================
-# Narrative & Analysis Generator (Smart Version)
-# ================================
 def display_analysis_section(df, score, signal_data):
-    """
-    根据数据自动生成投资分析文案 (智能切换版)
-    """
-    if df.empty:
-        return
+    if df.empty: return
 
     st.markdown("### 📝 Strategic Analysis & Key Watchlist")
     
-    # --- 1. 自动生成宏观总结 ---
     driver_raw = str(signal_data.get('driver', 'None'))
     driver_name = driver_raw.split(" ")[0] if " " in driver_raw else driver_raw
     driver_desc = _get_driver_narrative(driver_name)
@@ -389,55 +377,47 @@ def display_analysis_section(df, score, signal_data):
     With the current disconnect between US economic resilience and global slowdowns (China/Europe), 
     volatility in **Currency Markets (Yen/Euro)** and **Oil** remains a key external risk. 
     """
-    
     st.info(narrative + geo_context)
 
-    # --- 2. 准备数据 ---
     latest = df.iloc[-1]
     val_tbill = latest.get('t_bill_3m', 0)
     val_tga = latest.get('tga', 0)
     val_spread = latest.get('hy_spread', 0)
     
-    # --- 3. 智能判断：卡片 2 显示日元还是美元/欧元？---
-    # 逻辑：对比最近 90 天的相关性，谁大显示谁
+    # --- Smart Logic: Switch between JPY and DXY ---
     recent_df = df.iloc[-90:]
     corr_jpy = recent_df['usd_jpy'].corr(recent_df['russell2000']) if 'usd_jpy' in df else 0
     corr_dxy = recent_df['dxy'].corr(recent_df['russell2000']) if 'dxy' in df else 0
     
-    # 默认显示日元
+    # Default to JPY
     card2_title = "🇯🇵 2. USD/JPY (Carry Trade)"
     card2_tag = "External Risk"
     card2_val = f"{latest.get('usd_jpy', 0):.2f}"
-    card2_impact = "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM."
-    card2_watch = "Watch for: BOJ rate hikes or intervention."
+    txt_card2_impact = "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM."
+    txt_card2_watch = "Watch for: BOJ rate hikes or intervention."
     
-    # 如果 DXY (代表欧元/全球货币) 相关性更强，且 DXY 在涨（风险高），则切换为 DXY 卡片
-    # 注意：DXY 中 57% 是欧元。DXY 涨 = 欧元跌。
+    # Switch to DXY if correlation is stronger
     if abs(corr_dxy) > abs(corr_jpy):
         card2_title = "🌍 2. DXY (Euro/Global FX)"
         card2_tag = "Global Capital Flow"
         card2_val = f"{latest.get('dxy', 0):.2f}"
-        card2_impact = "A rising Dollar (often due to weak Euro/CNY) tightens global financial conditions, hurting earnings and causing capital flight from risk assets."
-        card2_watch = "Watch for: ECB/PBOC Policy divergence vs Fed."
+        txt_card2_impact = "A rising Dollar (often due to weak Euro/CNY) tightens global financial conditions, hurting earnings and causing capital flight."
+        txt_card2_watch = "Watch for: ECB/PBOC Policy divergence vs Fed."
 
-    # --- 4. 定义其他固定卡片文案 ---
+    # Safe Variables
     txt_us_impact = "The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings."
     txt_us_watch = "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
-    
     txt_tga_impact = "If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down)."
     txt_tga_watch = "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
-    
     txt_credit_impact = "The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly."
     txt_credit_watch = "Watch for: Corporate defaults or weak earnings guidance."
 
-    # --- 5. 渲染 ---
     st.subheader("🔍 Critical Indicators to Watch")
     c1, c2 = st.columns(2)
     
     with c1:
         _render_indicator_card("🇺🇸 1. US Rates", "High Impact", f"{val_tbill:.2f}%", txt_us_impact, txt_us_watch)
-        # 这里使用刚才计算出来的动态变量
-        _render_indicator_card(card2_title, card2_tag, card2_val, card2_impact, card2_watch)
+        _render_indicator_card(card2_title, card2_tag, card2_val, txt_card2_impact, txt_card2_watch)
 
     with c2:
         tga_dis = val_tga / 1000 if pd.notnull(val_tga) else 0
@@ -455,7 +435,20 @@ def main():
         st.header("Settings")
         start_date = st.date_input("Start Date", START_DEFAULT)
         end_date = st.date_input("End Date", END_DEFAULT)
+        
+        st.markdown("---")
+        st.subheader("Parameters")
+        
         window_days = st.slider("Scoring Window (Days)", 180, 730, 365)
+        
+        # === Z-Score Window Selection (Up to 7 Years) ===
+        z_lookback = st.selectbox(
+            "Z-Score Lookback Period",
+            options=[252, 504, 756, 1260, 1764], 
+            index=0, 
+            format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})"
+        )
+
         if start_date >= end_date:
             st.error("Start Date must be before End Date")
             return
@@ -476,7 +469,7 @@ def main():
         
         st.markdown("### 🎯 Market Signal & Conclusion")
         c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Recommendation", signal_data["signal"])
+        with c1: st.metric("Signal for IWM", signal_data["signal"], help="Specific to Russell 2000")
         with c2: st.metric("Signal Strength", signal_data["strength"], delta=label, delta_color="normal")
         with c3: st.metric("Liquidity Score", f"{score:.1f}")
         with c4: st.metric("Dominant Driver", signal_data["driver"])
@@ -496,36 +489,36 @@ def main():
 
     st.markdown("---")
 
-    # --- Charts ---
+    # --- Charts (Passing z_window) ---
     st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
     
     st.subheader("1. Core Liquidity Dynamics")
     c1, c2 = st.columns(2)
-    with c1: plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[Central Bank Liquidity]")
-    with c2: plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]")
+    with c1: plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[Central Bank Liquidity]", z_window=z_lookback)
+    with c2: plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]", z_window=z_lookback)
 
     st.subheader("2. Liquidity Drain & Buffer")
     c3, c4 = st.columns(2)
-    with c3: plot_overlay_with_correlation(all_df, "tga", title_prefix="[Treasury Account]")
-    with c4: plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo]")
+    with c3: plot_overlay_with_correlation(all_df, "tga", title_prefix="[Treasury Account]", z_window=z_lookback)
+    with c4: plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo]", z_window=z_lookback)
     
     st.subheader("3. Rates & Risk Sentiment")
     c5, c6 = st.columns(2)
-    with c5: plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[Risk-Free Rate]")
-    with c6: plot_overlay_with_correlation(all_df, "dxy", title_prefix="[US Dollar Index]")
+    with c5: plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[Risk-Free Rate]", z_window=z_lookback)
+    with c6: plot_overlay_with_correlation(all_df, "dxy", title_prefix="[US Dollar Index]", z_window=z_lookback)
 
     c7, c8 = st.columns(2)
-    with c7: plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]")
-    with c8: plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility]")
+    with c7: plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]", z_window=z_lookback)
+    with c8: plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility]", z_window=z_lookback)
 
     st.subheader("4. Global Liquidity & External Shocks")
     c9, c10 = st.columns(2)
-    with c9: plot_overlay_with_correlation(all_df, "ecb_assets", title_prefix="[ECB Assets]")
-    with c10: plot_overlay_with_correlation(all_df, "boj_assets", title_prefix="[BOJ Assets]")
+    with c9: plot_overlay_with_correlation(all_df, "ecb_assets", title_prefix="[ECB Assets]", z_window=z_lookback)
+    with c10: plot_overlay_with_correlation(all_df, "boj_assets", title_prefix="[BOJ Assets]", z_window=z_lookback)
     
     c11, c12 = st.columns(2)
-    with c11: plot_overlay_with_correlation(all_df, "usd_jpy", title_prefix="[USD/JPY Carry]")
-    with c12: plot_overlay_with_correlation(all_df, "real_yield_10y", title_prefix="[Real Yields]")
+    with c11: plot_overlay_with_correlation(all_df, "usd_jpy", title_prefix="[USD/JPY Carry]", z_window=z_lookback)
+    with c12: plot_overlay_with_correlation(all_df, "real_yield_10y", title_prefix="[Real Yields]", z_window=z_lookback)
 
     if score_res:
         with st.expander("📊 See Liquidity Score Details"):
@@ -533,7 +526,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
