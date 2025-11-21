@@ -369,11 +369,13 @@ def plot_correlation_analysis(df, target_col="russell2000"):
 # ================================
 # 流动性评分
 # ================================
+# ================================
+# Liquidity Scoring Function
+# ================================
 def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
-
     valid_df = df.dropna(how="all")
     if valid_df.empty:
-        raise ValueError("没有有效数据用于评分")
+        raise ValueError("No valid data for scoring")
 
     end_date = valid_df.index.max()
     start_date = end_date - pd.Timedelta(days=window_days)
@@ -385,19 +387,16 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
 
     for col, meta in config.items():
         if col not in window_df.columns:
-            st.info(f"[评分提示] 缺少 {col}")
             continue
 
         series = window_df[col].dropna()
         if len(series) < 30:
-            st.info(f"[评分提示] {col} 数据不足（<30）")
             continue
 
         mean = series.mean()
         std = series.std()
 
         if std == 0 or np.isnan(std):
-            st.info(f"[评分提示] {col} 标准差为 0 或 NaN，跳过")
             continue
 
         z = (series.iloc[-1] - mean) / std
@@ -418,20 +417,19 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
         total_weight += weight
 
     if total_weight == 0:
-        raise ValueError("没有可用指标计算评分（所有配置的指标都被跳过了）")
+        raise ValueError("No available indicators for scoring")
 
+    # --- 关键修复：这里必须先计算 score，才能在下面使用 ---
     score = 50 - 10 * (weighted_z / total_weight)
     score = max(0, min(100, score))
 
-def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
-    # ... (前面的计算逻辑不变) ...
-
+    # --- 设置英文标签 ---
     if score >= 60:
-        label = "Loose / Accommodative"  # 原: 流动性偏宽松
+        label = "Loose / Accommodative"
     elif score <= 40:
-        label = "Tight / Restrictive"    # 原: 流动性偏紧
+        label = "Tight / Restrictive"
     else:
-        label = "Neutral"                # 原: 流动性中性
+        label = "Neutral"
 
     detail_df = pd.DataFrame(z_details).set_index("indicator")
 
@@ -528,6 +526,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
