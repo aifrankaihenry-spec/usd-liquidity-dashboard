@@ -37,8 +37,9 @@ FRED_SERIES = {
 }
 
 
+
 YF_SYMBOLS = {
-    "russell2000": "^RUT",   # Russell 2000 指数
+    "russell2000": "RUT2000.US",   # stooq 格式
 }
 
 
@@ -409,6 +410,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
