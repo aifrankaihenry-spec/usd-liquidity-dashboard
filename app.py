@@ -427,6 +427,9 @@ def display_analysis_section(df, score, signal_data):
 # ================================
 # Main Application
 # ================================
+# ================================
+# Main Application
+# ================================
 def main():
     st.set_page_config(page_title="US Russell 2000 Investment Reference", layout="wide")
     st.title("🧊 US Russell 2000 Investment Reference")
@@ -439,15 +442,25 @@ def main():
         st.markdown("---")
         st.subheader("Parameters")
         
-        window_days = st.slider("Scoring Window (Days)", 180, 730, 365)
+        # === 修改这里：增加了 help 参数和下方的 caption ===
+        window_days = st.slider(
+            "Scoring Window (Days)", 
+            min_value=180, 
+            max_value=730, 
+            value=365,
+            help="决定使用过去多少天的数据作为‘基准’来计算评分。\n\n- 365天 (默认): 将今天的流动性与过去一年对比。\n- 调小: 对近期变化更敏感（短线视角）。\n- 调大: 过滤短期噪音，看长期趋势（长线视角）。"
+        )
+        st.caption("💡 决定流动性评分的“记忆长度” (Z-Score 基准)。")
         
-        # === Z-Score Window Selection (Up to 7 Years) ===
+        # === Z-Score Window Selection ===
         z_lookback = st.selectbox(
             "Z-Score Lookback Period",
             options=[252, 504, 756, 1260, 1764], 
             index=0, 
-            format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})"
+            format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})",
+            help="决定图表上方 '背离监测 (Gap)' 的计算周期。比如选择 5 年，就是看当前的背离程度在过去 5 年里算不算极端。"
         )
+        st.caption("💡 决定背离监测 (Gap) 的回测周期。")
 
         if start_date >= end_date:
             st.error("Start Date must be before End Date")
@@ -489,7 +502,7 @@ def main():
 
     st.markdown("---")
 
-    # --- Charts (Passing z_window) ---
+    # --- Charts ---
     st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
     
     st.subheader("1. Core Liquidity Dynamics")
