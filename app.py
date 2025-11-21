@@ -541,6 +541,77 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
         "sentiment": sentiment,
         "driver": dominant_driver
     }
+    # ================================
+# Narrative & Analysis Generator
+# ================================
+def display_analysis_section(df, score, signal_data):
+    """
+    根据数据自动生成投资分析文案
+    """
+    st.markdown("### 📝 Strategic Analysis & Key Watchlist")
+    
+    # --- 1. 自动生成宏观总结 ---
+    driver_name = signal_data['driver'].split(" ")[0] # 获取主导因子名称
+    trend = "Bullish" if score > 50 else "Bearish"
+    
+    # 基础叙事模板
+    narrative = f"""
+    **Current Market Regime:** The market is currently in a **{signal_data['sentiment']}** state (Score: {score:.1f}). 
+    The Russell 2000 is showing highest sensitivity to **{driver_name}**, indicating that 
+    **{_get_driver_narrative(driver_name)}** is the primary theme driving price action.
+    """
+    
+    # 结合地缘政治的通用提示 (可以根据实际情况手动修改这里)
+    geo_context = """
+    **🌐 Global Context & Geopolitics:**
+    With the current disconnect between US economic resilience and global slowdowns (China/Europe), 
+    volatility in **USD/JPY** and **Oil prices** remains a key external risk. 
+    Investors should monitor if global central banks (BOJ/ECB) diverge from the Fed, 
+    which could trigger rapid capital flow reversals affecting US small caps.
+    """
+    
+    st.info(narrative + geo_context)
+
+    # --- 2. 逐条重点指标分析 ---
+    st.subheader("🔍 Critical Indicators to Watch")
+    
+    col1, col2 = st.columns(2)
+    
+    # 获取最新数据
+    latest = df.iloc[-1]
+    
+    with col1:
+        _render_indicator_card(
+            "🇺🇸 1. US Rates (T-Bills / Real Yields)", 
+            "High Impact",
+            f"Current T-Bill 3M: {latest.get('t_bill_3m', 0):.2f}%",
+            "The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings.",
+            "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
+        )
+        
+        _render_indicator_card(
+            "🇯🇵 2. USD/JPY (Carry Trade)", 
+            "External Risk",
+            f"Current USD/JPY: {latest.get('usd_jpy', 0):.2f}",
+            "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM.",
+            "Watch for: BOJ rate hikes or intervention."
+        )
+
+    with col2:
+        _render_indicator_card(
+            "🏦 3. Liquidity Plumber (ON RRP & TGA)", 
+            "Flow Dynamics",
+            f"TGA Level: ${latest.get('tga', 0)/1000:.0f}B",
+            "If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down).",
+            "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
+        )
+        
+        _render_indicator_card(
+            "📉 4. Credit Spreads (HY Spread)", 
+            "Recession Alarm",
+            f"Current Spread: {latest.get('hy_spread', 0):.0f} bps",
+            "The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly.",
+            "
 # ================================
 # Streamlit 主程序
 # ================================
@@ -609,11 +680,18 @@ def main():
             st.error(f"🛑 **Conclusion:** {signal_data['sentiment']}. Liquidity is tightening, caution advised.")
         else:
             st.warning(f"⚠️ **Conclusion:** {signal_data['sentiment']}. Market lacks clear liquidity direction.")
+        # ... (接在 signal 那个板块的 if/else 判断之后)
+
+        # =======================
+        # 3. Analysis Section (New)
+        # =======================
+        display_analysis_section(all_df, score, signal_data)
 
     except Exception as e:
         st.error(f"Could not calculate signal: {e}")
 
     st.markdown("---")
+    
 
     # =======================
     # 3. Chart Section
@@ -679,6 +757,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
