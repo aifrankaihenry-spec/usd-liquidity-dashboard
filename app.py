@@ -242,7 +242,71 @@ def plot_equity_indices(df):
     fig.tight_layout()
     st.pyplot(fig)
 
+# ================================
+# 新增：相关性分析函数
+# ================================
+def plot_correlation_analysis(df, target_col="russell2000"):
+    if target_col not in df.columns:
+        st.warning(f"缺少目标列 {target_col}，无法进行相关性分析")
+        return
 
+    # 1. 计算相关性矩阵
+    # 只需要数值型列
+    numeric_df = df.select_dtypes(include=[np.number])
+    corr_matrix = numeric_df.corr()
+    
+    # 提取与 target 的相关性，并去掉 target 自身
+    if target_col in corr_matrix.columns:
+        target_corr = corr_matrix[target_col].drop(target_col).sort_values(ascending=True)
+    else:
+        return
+
+    # --- 图表 1：静态相关性排行 ---
+    fig1, ax = plt.subplots(figsize=(10, 6))
+    
+    # 根据正负设定颜色
+    colors = ['#ff9999' if x < 0 else '#99ff99' for x in target_corr.values]
+    bars = ax.barh(target_corr.index, target_corr.values, color=colors)
+    
+    ax.set_title(f"Correlation with {target_col} (Selected Period)")
+    ax.set_xlabel("Correlation Coefficient")
+    ax.set_xlim(-1.1, 1.1)
+    ax.axvline(0, color='black', linewidth=0.8, linestyle='-')
+    ax.grid(True, axis='x', linestyle='--', alpha=0.5)
+
+    # 在柱子旁标注数值
+    for bar in bars:
+        width = bar.get_width()
+        label_x_pos = width + 0.05 if width > 0 else width - 0.15
+        ax.text(label_x_pos, bar.get_y() + bar.get_height()/2, f'{width:.2f}', 
+                va='center', fontsize=9)
+
+    fig1.tight_layout()
+    
+    
+    # --- 图表 2：滚动相关性 (Rolling Correlation) ---
+    # 选取几个最重要的宏观变量进行观察
+    key_macro_vars = ["bank_reserves", "dxy", "hy_spread", "t_bill_3m"]
+    valid_vars = [c for c in key_macro_vars if c in df.columns]
+    
+    fig2, ax2 = plt.subplots(figsize=(10, 5))
+    
+    # 计算 90 天滚动相关性
+    window = 90
+    for col in valid_vars:
+        rolling_corr = df[target_col].rolling(window).corr(df[col])
+        ax2.plot(rolling_corr.index, rolling_corr, label=f"{col} (90d roll)")
+        
+    ax2.set_title(f"90-Day Rolling Correlation with {target_col}")
+    ax2.set_ylabel("Correlation")
+    ax2.axhline(0, color='black', linewidth=1, linestyle='--')
+    ax2.set_ylim(-1, 1)
+    ax2.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    ax2.grid(True, linestyle='--', alpha=0.4)
+    
+    fig2.tight_layout()
+
+    return fig1, fig2
 
 
 # ================================
@@ -423,8 +487,39 @@ def main():
     except Exception as e:
         st.error(f"无法计算流动性评分：{e}")
 
+# ... (接在 main 函数后面)
+    
+    # =======================
+    # 相关性分析板块
+    # =======================
+    st.markdown("---")
+    st.header("🔗 相关性分析 (vs Russell 2000)")
+    
+    # 确保 russell2000 存在且有数据
+    if "russell2000" in all_df.columns:
+        try:
+            fig_static, fig_rolling = plot_correlation_analysis(all_df, target_col="russell2000")
+            
+            col_corr1, col_corr2 = st.columns(2)
+            
+            with col_corr1:
+                st.subheader("全时段相关性排行")
+                st.pyplot(fig_static)
+                st.caption("正相关(绿)表示同涨同跌，负相关(红)表示走势相反。")
+                
+            with col_corr2:
+                st.subheader("滚动相关性 (90天)")
+                st.pyplot(fig_rolling)
+                st.caption("观察宏观因子与股市的关系是否发生'机制转换' (Regime Shift)。")
+                
+        except Exception as e:
+            st.error(f"生成相关性图表出错: {e}")
+    else:
+        st.info("缺少 Russell 2000 数据，跳过相关性分析。")
+
 if __name__ == "__main__":
     main()
+
 
 
 
