@@ -1,21 +1,28 @@
-# app.py
+# app.py 顶部引入部分
 import os
 from datetime import date
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 import yfinance as yf
 import streamlit as st
 
 # ================================
-# 基本设置
+# Basic Settings
 # ================================
+# 设置为英文风格
+plt.style.use('seaborn-v0_8-whitegrid') # 或者 'ggplot'
+plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
+
 START_DEFAULT = date(2018, 1, 1)
 END_DEFAULT = date.today()
 
 OUTPUT_DIR = "liquidity_charts"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 
 # ================================
 # 数据源（FRED + yfinance）
@@ -244,46 +251,40 @@ def plot_equity_indices(df):
 
 def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, title_prefix=""):
     """
-    画一张组合图：
-    - 上半部分：指标(左轴) vs Russell 2000(右轴)
-    - 下半部分：90天滚动相关性
+    Plot Overlay: Indicator vs Target with Rolling Correlation
     """
     if indicator_col not in df.columns or target_col not in df.columns:
-        st.warning(f"缺少数据：{indicator_col} 或 {target_col}")
+        st.warning(f"Missing data: {indicator_col} or {target_col}")
         return
 
-    # 准备数据
     plot_df = df[[indicator_col, target_col]].dropna()
     if plot_df.empty:
         return
 
-    # 计算滚动相关性
     rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
 
-    # 创建画布：2个子图，高度比例 2:1
     fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
                                        gridspec_kw={'height_ratios': [2, 1]})
     
-    # --- 上半部分：双轴走势对比 ---
+    # --- Top Chart: Dual Axis ---
     color_ind = 'tab:blue'
     color_target = 'tab:gray'
     
-    # 左轴：宏观指标
     ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=1.5)
     ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold')
     ax1.tick_params(axis='y', labelcolor=color_ind)
     
-    # 右轴：Russell 2000
     ax2 = ax1.twinx()
     ax2.plot(plot_df.index, plot_df[target_col], color=color_target, label=target_col, linestyle='--', alpha=0.6, linewidth=1)
     ax2.set_ylabel(target_col, color=color_target, fontweight='bold')
     ax2.tick_params(axis='y', labelcolor=color_target)
     
-    ax1.set_title(f"{title_prefix} {indicator_col} vs {target_col}", fontsize=14)
+    # Set Title (English)
+    title_text = f"{title_prefix} {indicator_col} vs {target_col}"
+    ax1.set_title(title_text, fontsize=16, fontweight='bold', pad=15)
     ax1.grid(True, linestyle='--', alpha=0.3)
 
-    # --- 下半部分：滚动相关性 ---
-    # 根据正负值填充颜色
+    # --- Bottom Chart: Rolling Correlation ---
     corr_vals = rolling_corr.dropna()
     if not corr_vals.empty:
         ax_corr.plot(corr_vals.index, corr_vals, color='black', linewidth=1)
@@ -295,7 +296,6 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     ax_corr.axhline(0, color='black', linestyle='-', linewidth=0.5)
     ax_corr.grid(True, linestyle='--', alpha=0.3)
     
-    # 调整布局
     plt.subplots_adjust(hspace=0.05)
     st.pyplot(fig)
 
@@ -423,12 +423,15 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
     score = 50 - 10 * (weighted_z / total_weight)
     score = max(0, min(100, score))
 
+def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
+    # ... (前面的计算逻辑不变) ...
+
     if score >= 60:
-        label = "流动性偏宽松"
+        label = "Loose / Accommodative"  # 原: 流动性偏宽松
     elif score <= 40:
-        label = "流动性偏紧"
+        label = "Tight / Restrictive"    # 原: 流动性偏紧
     else:
-        label = "流动性中性"
+        label = "Neutral"                # 原: 流动性中性
 
     detail_df = pd.DataFrame(z_details).set_index("indicator")
 
@@ -439,79 +442,72 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
 # ================================
 def main():
     st.set_page_config(page_title="USD Liquidity Dashboard", layout="wide")
-    st.title("🧊 USD 宏观流动性 Dashboard")
+    st.title("🧊 USD Macro Liquidity Dashboard")
 
-    # ==== 左侧参数 ====
+    # ==== Sidebar ====
     with st.sidebar:
-        st.header("参数设置")
-        start_date = st.date_input("开始日期", START_DEFAULT)
-        end_date = st.date_input("结束日期", END_DEFAULT)
-        window_days = st.slider("评分窗口（天）", 180, 730, 365)
+        st.header("Settings")
+        start_date = st.date_input("Start Date", START_DEFAULT)
+        end_date = st.date_input("End Date", END_DEFAULT)
+        window_days = st.slider("Scoring Window (Days)", 180, 730, 365)
 
         if start_date >= end_date:
-            st.error("开始日期必须早于结束日期")
+            st.error("Start Date must be before End Date")
             return
 
-    st.info("数据正在获取...")
+    st.info("Fetching data from FRED & Yahoo Finance...")
     all_df = build_panel(start_date, end_date)
     
     if all_df.empty:
-        st.error("数据获取失败：all_df 为空")
+        st.error("Data Fetch Failed: DataFrame is empty.")
         return
-    st.success("数据更新完成")
+    st.success("Data Updated Successfully")
 
-    st.subheader("最新一行数据")
+    st.subheader("Latest Data Point")
     st.dataframe(all_df.tail(1))
     
-    
-
-
     # =======================
-    # 图表区
+    # Chart Section: Deep Dive
     # =======================
-    # ... (在 st.dataframe(all_df.tail(1)) 之后)
+    st.markdown("---")
+    st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
+    st.caption("Upper: Dual-Axis Price Action (Blue=Macro Indicator, Gray=Russell 2000) | Lower: 90-Day Rolling Correlation")
 
-    # =======================
-    # 图表区：深度相关性分析
-    # =======================
-    st.header("🔬 深度透视：宏观因子 vs Russell 2000")
-    st.caption("上图：双轴价格走势（蓝色=宏观指标，灰色虚线=Russell 2000） | 下图：90天滚动相关性（红色=负相关，绿色=正相关）")
-
-    # 1. 核心流动性：准备金
-    st.subheader("1. 核心流动性")
+    # 1. Core Liquidity
+    st.subheader("1. Core Liquidity Dynamics")
     col1, col2 = st.columns(2)
     with col1:
-        plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[央行水龙头]")
+        plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[Central Bank Liquidity]")
     with col2:
-        plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[美联储资产表]")
+        plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]")
 
-    # 2. 抽水效应：TGA & ON RRP
-    st.subheader("2. 抽水与缓冲")
+    # 2. Withdrawal & Buffer
+    st.subheader("2. Liquidity Drain & Buffer")
     col3, col4 = st.columns(2)
     with col3:
-        plot_overlay_with_correlation(all_df, "tga", title_prefix="[财政部账户]")
+        plot_overlay_with_correlation(all_df, "tga", title_prefix="[Treasury Account (TGA)]")
     with col4:
-        plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[逆回购工具]")
+        plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo (ON RRP)]")
     
-    # 3. 利率与避险
-    st.subheader("3. 利率痛点 & 避险情绪")
+    # 3. Rates & Risk
+    st.subheader("3. Rates & Risk Sentiment")
     col5, col6 = st.columns(2)
     with col5:
-        # 这里特意选了 T-Bill 3M，因为你刚才发现它相关性最高
-        plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[短期无风险利率]")
+        plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[Risk-Free Rate (3M)]")
     with col6:
-        plot_overlay_with_correlation(all_df, "dxy", title_prefix="[美元指数]")
+        plot_overlay_with_correlation(all_df, "dxy", title_prefix="[US Dollar Index]")
 
     col7, col8 = st.columns(2)
     with col7:
-        plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[信用利差]")
+        plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]")
     with col8:
-        plot_overlay_with_correlation(all_df, "vix", title_prefix="[恐慌指数]")
+        plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility (VIX)]")
 
     # =======================
-    # 流动性评分
+    # Liquidity Score
     # =======================
-    st.header("🧠 宏观流动性评分")
+    st.markdown("---")
+    st.header("🧠 Macro Liquidity Score")
 
     try:
         score, label, detail_df, (s, e) = compute_liquidity_score(
@@ -520,48 +516,19 @@ def main():
 
         c1, c2 = st.columns(2)
         with c1:
-            st.metric("流动性评分", f"{score:.1f}")
+            st.metric("Liquidity Score", f"{score:.1f}")
         with c2:
-            st.metric("状态", label)
+            st.metric("Regime Status", label)
 
-        st.caption(f"评分区间：{s.date()} → {e.date()}")
+        st.caption(f"Scoring Period: {s.date()} → {e.date()}")
         st.dataframe(detail_df)
 
     except Exception as e:
-        st.error(f"无法计算流动性评分：{e}")
-
-# ... (接在 main 函数后面)
-    
-    # =======================
-    # 相关性分析板块
-    # =======================
-    st.markdown("---")
-    st.header("🔗 相关性分析 (vs Russell 2000)")
-    
-    # 确保 russell2000 存在且有数据
-    if "russell2000" in all_df.columns:
-        try:
-            fig_static, fig_rolling = plot_correlation_analysis(all_df, target_col="russell2000")
-            
-            col_corr1, col_corr2 = st.columns(2)
-            
-            with col_corr1:
-                st.subheader("全时段相关性排行")
-                st.pyplot(fig_static)
-                st.caption("正相关(绿)表示同涨同跌，负相关(红)表示走势相反。")
-                
-            with col_corr2:
-                st.subheader("滚动相关性 (90天)")
-                st.pyplot(fig_rolling)
-                st.caption("观察宏观因子与股市的关系是否发生'机制转换' (Regime Shift)。")
-                
-        except Exception as e:
-            st.error(f"生成相关性图表出错: {e}")
-    else:
-        st.info("缺少 Russell 2000 数据，跳过相关性分析。")
+        st.error(f"Score calculation failed: {e}")
 
 if __name__ == "__main__":
     main()
+
 
 
 
