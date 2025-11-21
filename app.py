@@ -542,10 +542,8 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
         "driver": dominant_driver
     }
     # ================================
-# Narrative & Analysis Generator
 # ================================
-# ================================
-# Narrative & Analysis Generator (Stable Version)
+# Narrative & Analysis Generator (Final Fix)
 # ================================
 def display_analysis_section(df, score, signal_data):
     """
@@ -566,7 +564,7 @@ def display_analysis_section(df, score, signal_data):
     
     driver_desc = _get_driver_narrative(driver_name)
     
-    # 宏观叙事文案
+    # 宏观叙事文案 (注意：三引号内的缩进不影响 Python 运行，但 def 必须顶格)
     narrative = f"""
     **Current Market Regime:** The market is currently in a **{signal_data['sentiment']}** state (Score: {score:.1f}). 
     The Russell 2000 is showing highest sensitivity to **{driver_name}**, indicating that 
@@ -674,88 +672,6 @@ def _render_indicator_card(title, tag, value, distinct_impact, watch_item):
         st.markdown(f"**Status:** `{tag}` | **Value:** `{value}`")
         st.markdown(f"**💥 Impact on IWM:** {distinct_impact}")
         st.markdown(f"**👀 Watch:** *{watch_item}*")
-            "
-# ================================
-# Streamlit 主程序
-# ================================
-def main():
-    st.set_page_config(page_title="USD Liquidity Dashboard", layout="wide")
-    st.title("🧊 USD Macro Liquidity Dashboard")
-
-    # ==== Sidebar ====
-    with st.sidebar:
-        st.header("Settings")
-        start_date = st.date_input("Start Date", START_DEFAULT)
-        end_date = st.date_input("End Date", END_DEFAULT)
-        window_days = st.slider("Scoring Window (Days)", 180, 730, 365)
-
-        if start_date >= end_date:
-            st.error("Start Date must be before End Date")
-            return
-            
-        st.markdown("---")
-        st.caption("Disclaimer: This dashboard is for informational purposes only, not financial advice.")
-
-    # 删除了 st.info("Fetching...")
-    
-    # 获取数据
-    all_df = build_panel(start_date, end_date)
-    
-    if all_df.empty:
-        st.error("Data Fetch Failed: DataFrame is empty.")
-        return
-    
-    # 删除了 st.success("Data Updated Successfully")
-
-    # =======================
-    # 1. Calculate Score FIRST
-    # =======================
-    score_res = None
-    try:
-        # 计算分数
-        score, label, detail_df, (s, e) = compute_liquidity_score(
-            all_df, LIQUIDITY_CONFIG, window_days
-        )
-        # 生成交易结论
-        signal_data = analyze_market_signal(all_df, score)
-        score_res = (score, label, detail_df)
-        
-        # =======================
-        # 2. Display Conclusion Row
-        # =======================
-        st.markdown("### 🎯 Market Signal & Conclusion")
-        
-        con_col1, con_col2, con_col3, con_col4 = st.columns(4)
-        
-        with con_col1:
-            st.metric("Recommendation", signal_data["signal"])
-        with con_col2:
-            st.metric("Signal Strength", signal_data["strength"], delta=label, delta_color="normal")
-        with con_col3:
-            st.metric("Liquidity Score", f"{score:.1f}", help="0-100, >50 is Bullish")
-        with con_col4:
-            st.metric("Dominant Driver", signal_data["driver"], help="The factor with highest correlation right now")
-
-        # 显示带颜色的状态条
-        if signal_data["color"] == "green":
-            st.success(f"✅ **Conclusion:** {signal_data['sentiment']}. Liquidity conditions are supportive.")
-        elif signal_data["color"] == "red":
-            st.error(f"🛑 **Conclusion:** {signal_data['sentiment']}. Liquidity is tightening, caution advised.")
-        else:
-            st.warning(f"⚠️ **Conclusion:** {signal_data['sentiment']}. Market lacks clear liquidity direction.")
-        # ... (接在 signal 那个板块的 if/else 判断之后)
-
-        # =======================
-        # 3. Analysis Section (New)
-        # =======================
-        display_analysis_section(all_df, score, signal_data)
-
-    except Exception as e:
-        st.error(f"Could not calculate signal: {e}")
-
-    st.markdown("---")
-    
-
     # =======================
     # 3. Chart Section
     # =======================
@@ -820,6 +736,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
