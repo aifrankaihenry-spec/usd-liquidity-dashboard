@@ -25,7 +25,7 @@ FRED_SERIES = {
     "bank_reserves":    "WRESBAL",
     "on_rrp":           "RRPONTSYD",
     "fed_balance_sheet":"WALCL",
-    "tga":              "WTREGEN",
+    "tga": "RTTGALTSYD",  # 原为 "WTREGEN" (周频)，改为 "RTTGALTSYD" (日频)
     "sofr":             "SOFR",
     "t_bill_1m":        "DGS1MO",
     "t_bill_3m":        "DGS3MO",
@@ -425,6 +425,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
