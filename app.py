@@ -28,27 +28,33 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # 数据源（FRED + yfinance）
 # ================================
 
+# app.py 顶部
+
 FRED_SERIES = {
     "bank_reserves":    "WRESBAL",
     "on_rrp":           "RRPONTSYD",
     "fed_balance_sheet":"WALCL",
-    "tga":              "WTREGEN",  
+    "tga":              "WTREGEN",
     "sofr":             "SOFR",
     "t_bill_1m":        "DGS1MO",
     "t_bill_3m":        "DGS3MO",
     "hy_spread":        "BAMLH0A0HYM2",
     "vix":              "VIXCLS",
-    "repo_gc":          "TGCRRATE",     # Tri-party GC Repo Rate
-
+    "repo_gc":          "TGCRRATE",
+    
+    # === 新增：全球宏观因子 ===
+    "ecb_assets":       "ECBASSETSW",  # 欧洲央行资产 (周频)
+    "boj_assets":       "JPNASSETS",   # 日本央行资产 (月频)
+    "real_yield_10y":   "DFII10",      # 美国10年期实际收益率 (通胀保值债券)
 }
-
-
 
 YF_SYMBOLS = {
-    "russell2000": "^RUT",   # stooq 格式
-    "dxy": "DX-Y.NYB"
+    "russell2000": "IWM",
+    "dxy":         "DX-Y.NYB",
+    
+    # === 新增：日元汇率 ===
+    "usd_jpy":     "JPY=X",       # 美元兑日元 (套利交易风向标)
 }
-
 
 
 # ================================
@@ -65,8 +71,13 @@ LIQUIDITY_CONFIG = {
     "hy_spread":          {"sign": +1, "weight": 1.5},
     "dxy":                {"sign": +1, "weight": 1.0},
     "vix":                {"sign": +1, "weight": 1.0},
-}
 
+    # === 新增配置 ===
+    "ecb_assets":         {"sign": -1, "weight": 0.5}, # 资产越多(Z变大)，应该利好，所以 sign -1 (公式逻辑: 负数加分)
+    "boj_assets":         {"sign": -1, "weight": 0.5}, # 同上
+    "real_yield_10y":     {"sign": +1, "weight": 1.2}, # 实际利率越高，流动性越紧，sign +1 (正数扣分)
+    "usd_jpy":            {"sign": -1, "weight": 0.8}, # 汇率越高(日元弱)，套利越爽，流动性越好，sign -1 (负数加分)
+}
 # ================================
 # 工具函数：抓数据
 # ================================
@@ -636,6 +647,28 @@ def main():
         plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]")
     with col8:
         plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility (VIX)]")
+        # ... (接在 hy_spread 和 vix 的图表代码后面)
+
+    # =======================
+    # 新增板块：全球与外部冲击
+    # =======================
+    st.subheader("4. Global Liquidity & External Shocks")
+    
+    col9, col10 = st.columns(2)
+    with col9:
+        # 欧洲央行资产表
+        plot_overlay_with_correlation(all_df, "ecb_assets", title_prefix="[ECB Balance Sheet]")
+    with col10:
+        # 日本央行资产表 (注: 它是月频数据，线条会呈阶梯状，但依然可以看出大趋势)
+        plot_overlay_with_correlation(all_df, "boj_assets", title_prefix="[BOJ Balance Sheet]")
+
+    col11, col12 = st.columns(2)
+    with col11:
+        # 美元兑日元：日元套利交易的核心
+        plot_overlay_with_correlation(all_df, "usd_jpy", title_prefix="[USD/JPY Carry Trade]")
+    with col12:
+        # 实际收益率：比名义利率更真实的资金成本
+        plot_overlay_with_correlation(all_df, "real_yield_10y", title_prefix="[US 10Y Real Yield]")
 
     # =======================
     # 4. Detail Table
@@ -646,6 +679,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
