@@ -544,6 +544,9 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
     # ================================
 # Narrative & Analysis Generator
 # ================================
+# ================================
+# Narrative & Analysis Generator
+# ================================
 def display_analysis_section(df, score, signal_data):
     """
     根据数据自动生成投资分析文案
@@ -551,17 +554,18 @@ def display_analysis_section(df, score, signal_data):
     st.markdown("### 📝 Strategic Analysis & Key Watchlist")
     
     # --- 1. 自动生成宏观总结 ---
-    driver_name = signal_data['driver'].split(" ")[0] # 获取主导因子名称
-    trend = "Bullish" if score > 50 else "Bearish"
+    # 确保 signal_data['driver'] 存在且是字符串
+    driver_raw = str(signal_data.get('driver', 'None'))
+    driver_name = driver_raw.split(" ")[0] if " " in driver_raw else driver_raw
     
-    # 基础叙事模板
+    # 基础叙事模板 (使用三引号，允许换行)
     narrative = f"""
     **Current Market Regime:** The market is currently in a **{signal_data['sentiment']}** state (Score: {score:.1f}). 
     The Russell 2000 is showing highest sensitivity to **{driver_name}**, indicating that 
     **{_get_driver_narrative(driver_name)}** is the primary theme driving price action.
     """
     
-    # 结合地缘政治的通用提示 (可以根据实际情况手动修改这里)
+    # 结合地缘政治的通用提示
     geo_context = """
     **🌐 Global Context & Geopolitics:**
     With the current disconnect between US economic resilience and global slowdowns (China/Europe), 
@@ -571,6 +575,71 @@ def display_analysis_section(df, score, signal_data):
     """
     
     st.info(narrative + geo_context)
+
+    # --- 2. 逐条重点指标分析 ---
+    st.subheader("🔍 Critical Indicators to Watch")
+    
+    col1, col2 = st.columns(2)
+    
+    # 获取最新数据 (防止 key error)
+    latest = df.iloc[-1]
+    
+    with col1:
+        _render_indicator_card(
+            "🇺🇸 1. US Rates (T-Bills / Real Yields)", 
+            "High Impact",
+            f"Current T-Bill 3M: {latest.get('t_bill_3m', 0):.2f}%",
+            # 使用三引号修复潜在的换行报错
+            """The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings.""",
+            "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
+        )
+        
+        _render_indicator_card(
+            "🇯🇵 2. USD/JPY (Carry Trade)", 
+            "External Risk",
+            f"Current USD/JPY: {latest.get('usd_jpy', 0):.2f}",
+            """A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM.""",
+            "Watch for: BOJ rate hikes or intervention."
+        )
+
+    with col2:
+        tga_val = latest.get('tga', 0) / 1000 if pd.notnull(latest.get('tga')) else 0
+        _render_indicator_card(
+            "🏦 3. Liquidity Plumber (ON RRP & TGA)", 
+            "Flow Dynamics",
+            f"TGA Level: ${tga_val:.0f}B",
+            """If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down).""",
+            "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
+        )
+        
+        _render_indicator_card(
+            "📉 4. Credit Spreads (HY Spread)", 
+            "Recession Alarm",
+            f"Current Spread: {latest.get('hy_spread', 0):.0f} bps",
+            """The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly.""",
+            "Watch for: Corporate defaults or weak earnings guidance."
+        )
+
+def _get_driver_narrative(driver):
+    # 简单的映射逻辑
+    mapping = {
+        "t_bill_3m": "Fed Policy & Cost of Capital",
+        "bank_reserves": "Central Bank Liquidity Support",
+        "hy_spread": "Credit Risk & Recession Fears",
+        "dxy": "Currency Headwinds & Global Capital Flows",
+        "tga": "Fiscal Spending & Treasury General Account",
+        "usd_jpy": "Global Carry Trade Dynamics",
+        "vix": "Market Fear & Hedging Demand",
+        "fed_balance_sheet": "Quantitative Tightening (QT)",
+        "on_rrp": "Liquidity Buffer Dynamics"
+    }
+    return mapping.get(driver, "Macro Factors")
+
+def _render_indicator_card(title, tag, value, distinct_impact, watch_item):
+    with st.expander(f"{title}", expanded=True):
+        st.markdown(f"**Status:** `{tag}` | **Value:** `{value}`")
+        st.markdown(f"**💥 Impact on IWM:** {distinct_impact}")
+        st.markdown(f"**👀 Watch:** *{watch_item}*")
 
     # --- 2. 逐条重点指标分析 ---
     st.subheader("🔍 Critical Indicators to Watch")
@@ -757,6 +826,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
