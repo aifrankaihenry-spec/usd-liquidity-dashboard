@@ -141,17 +141,21 @@ def build_panel(start_date, end_date):
 # Plotting Functions
 # ================================
 def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, title_prefix=""):
+    """
+    Plot Overlay with Divergence Analysis (Z-Score Gap)
+    """
     if indicator_col not in df.columns or target_col not in df.columns:
         st.warning(f"Missing data: {indicator_col} or {target_col}")
         return
 
     plot_df = df[[indicator_col, target_col]].dropna()
-    if plot_df.empty:
-        return
+    if plot_df.empty: return
 
+    # --- 1. 计算滚动相关性 ---
     rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
-    valid_corr = rolling_corr.dropna()
     
+    # 获取最新相关性
+    valid_corr = rolling_corr.dropna()
     if valid_corr.empty:
         latest_corr = 0.0
         last_date = plot_df.index[-1]
@@ -159,12 +163,49 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
         latest_corr = valid_corr.iloc[-1]
         last_date = valid_corr.index[-1]
 
+    # --- 2. 计算背离度 (Divergence / Z-Score Gap) ---
+    # 选取过去 1 年 (252天) 作为基准窗口来计算 Z-Score
+    lookback = 252 
+    if len(plot_df) > lookback:
+        subset = plot_df.iloc[-lookback:]
+    else:
+        subset = plot_df
+    
+    # 计算标准分 (Z-Score): (当前值 - 均值) / 标准差
+    def calc_z(series):
+        return (series.iloc[-1] - series.mean()) / series.std()
+    
+    z_target = calc_z(subset[target_col])      # IWM 的 Z-Score
+    z_indic = calc_z(subset[indicator_col])    # 宏观指标的 Z-Score
+    
+    # 判断相关性方向：
+    # 如果相关性是正的 (+)，那么 Gap = Z_target - Z_indic
+    # 如果相关性是负的 (-)，那么 Gap = Z_target - (-Z_indic) = Z_target + Z_indic
+    # 我们用 sign(latest_corr) 来自动调节
+    corr_sign = np.sign(latest_corr)
+    
+    # 背离值计算
+    gap = z_target - (corr_sign * z_indic)
+    
+    # 定义背离状态
+    if gap > 1.5:
+        gap_status = "Overvalued 🔴" # 价格相对于指标太贵了
+        gap_color = "red"
+    elif gap < -1.5:
+        gap_status = "Undervalued 🟢" # 价格相对于指标太便宜了
+        gap_color = "green"
+    else:
+        gap_status = "Fair Value ⚪"
+        gap_color = "black"
+
+    # --- 3. 画图 ---
     fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
                                        gridspec_kw={'height_ratios': [2, 1]})
     
     color_ind = 'tab:blue'
     color_target = 'tab:gray'
     
+    # 上半部分：双轴图
     ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=1.5)
     ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold')
     ax1.tick_params(axis='y', labelcolor=color_ind)
@@ -174,11 +215,20 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     ax2.set_ylabel(target_col, color=color_target, fontweight='bold')
     ax2.tick_params(axis='y', labelcolor=color_target)
     
+    # 标题包含背离信息
     corr_str = f"{latest_corr:+.2f}"
     title_text = f"{title_prefix} {indicator_col} vs {target_col} (Corr: {corr_str})"
     ax1.set_title(title_text, fontsize=16, fontweight='bold', pad=15)
+    
+    # 在图表顶部显示 Z-Score Gap (作为副标题)
+    gap_text = f"Z-Score Gap (1Y): {gap:+.2f}σ [{gap_status}]"
+    ax1.text(0.5, 0.95, gap_text, transform=ax1.transAxes, ha='center', 
+             fontsize=12, fontweight='bold', color=gap_color, 
+             bbox=dict(facecolor='white', alpha=0.8, edgecolor='lightgray'))
+
     ax1.grid(True, linestyle='--', alpha=0.3)
 
+    # 下半部分：滚动相关性
     if not valid_corr.empty:
         ax_corr.plot(valid_corr.index, valid_corr, color='black', linewidth=1)
         ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr > 0), color='green', alpha=0.3)
@@ -190,10 +240,7 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
             xy=(last_date, latest_corr), 
             xytext=(5, 0), 
             textcoords="offset points", 
-            fontsize=12, 
-            fontweight='bold', 
-            color=text_color,
-            va='center'
+            fontsize=12, fontweight='bold', color=text_color, va='center'
         )
         ax_corr.scatter(last_date, latest_corr, color=text_color, s=50, zorder=5)
 
@@ -201,6 +248,7 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     ax_corr.set_ylim(-1.1, 1.1)
     ax_corr.axhline(0, color='black', linestyle='-', linewidth=0.5)
     ax_corr.grid(True, linestyle='--', alpha=0.3)
+    
     plt.subplots_adjust(hspace=0.05)
     st.pyplot(fig)
 
@@ -488,5 +536,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
