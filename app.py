@@ -141,36 +141,37 @@ def build_panel(start_date, end_date):
 # ================================
 # Plotting Functions (Enhanced with Z-Window)
 # ================================
-def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, z_window=252, title_prefix=""):
+# 修改函数定义，增加 view_start_date 参数
+def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, z_window=252, view_start_date=None, title_prefix=""):
     """
-    Overlay plot with Divergence Analysis (Z-Score Gap).
-    Accepts z_window for customizable lookback.
+    Plot Overlay with Divergence Analysis (Z-Score Gap).
+    Supports 'view_start_date' to zoom in on charts without breaking historical calculations.
     """
     if indicator_col not in df.columns or target_col not in df.columns:
         st.warning(f"Missing data: {indicator_col} or {target_col}")
         return
 
-    plot_df = df[[indicator_col, target_col]].dropna()
-    if plot_df.empty:
-        return
+    # 1. 必须使用【全量数据】来计算相关性和 Z-Score，否则历史回测会不准
+    full_df = df[[indicator_col, target_col]].dropna()
+    if full_df.empty: return
 
-    # 1. Rolling Correlation
-    rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
+    # --- 计算滚动相关性 (基于全量数据) ---
+    rolling_corr = full_df[indicator_col].rolling(window=window).corr(full_df[target_col])
     valid_corr = rolling_corr.dropna()
     
     if valid_corr.empty:
         latest_corr = 0.0
-        last_date = plot_df.index[-1]
+        last_date = full_df.index[-1]
     else:
         latest_corr = valid_corr.iloc[-1]
         last_date = valid_corr.index[-1]
 
-    # 2. Z-Score Gap Calculation
+    # --- 计算背离度 (基于全量数据) ---
     lookback = z_window
-    if len(plot_df) > lookback:
-        subset = plot_df.iloc[-lookback:]
+    if len(full_df) > lookback:
+        subset = full_df.iloc[-lookback:]
     else:
-        subset = plot_df
+        subset = full_df
     
     def calc_z(series):
         if series.std() == 0: return 0
@@ -182,7 +183,6 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     corr_sign = np.sign(latest_corr) if latest_corr != 0 else 1
     gap = z_target - (corr_sign * z_indic)
     
-    # Gap Status Logic
     if gap > 1.5:
         gap_status = "OVERVALUED ●"
         gap_color = "#D62728"
@@ -193,14 +193,29 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
         gap_status = "Fair Value"
         gap_color = "#333333"
 
-    # 3. Plotting
+    # ==========================================
+    # 关键修改：在这里根据 view_start_date 进行切割，只画出用户想看的时间段
+    # ==========================================
+    if view_start_date:
+        # 确保转换为 datetime
+        filter_date = pd.to_datetime(view_start_date)
+        plot_df = full_df.loc[full_df.index >= filter_date]
+        valid_corr = valid_corr.loc[valid_corr.index >= filter_date]
+    else:
+        plot_df = full_df
+    # ==========================================
+
+    if plot_df.empty:
+        st.warning(f"No data to plot after {view_start_date}")
+        return
+
+    # --- 3. 画图 (使用切割后的 plot_df) ---
     fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
                                        gridspec_kw={'height_ratios': [2, 1]})
     
     color_ind = 'tab:blue'
     color_target = 'tab:gray'
     
-    # Top Chart
     ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=2)
     ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold', fontsize=12)
     ax1.tick_params(axis='y', labelcolor=color_ind)
@@ -214,7 +229,6 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     title_text = f"{title_prefix} {indicator_col} vs {target_col} (Corr: {corr_str})"
     ax1.set_title(title_text, fontsize=18, fontweight='bold', pad=20)
     
-    # Z-Score Gap Label (Large Font)
     gap_text = f"Z-Score Gap ({lookback}d): {gap:+.2f}σ  [{gap_status}]"
     ax1.text(0.5, 0.92, gap_text, transform=ax1.transAxes, ha='center', 
              fontsize=18, fontweight='heavy', color=gap_color, 
@@ -222,21 +236,22 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
 
     ax1.grid(True, linestyle='--', alpha=0.3)
 
-    # Bottom Chart
     if not valid_corr.empty:
         ax_corr.plot(valid_corr.index, valid_corr, color='black', linewidth=1)
         ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr > 0), color='green', alpha=0.3)
         ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr < 0), color='red', alpha=0.3)
         
         text_color = 'green' if latest_corr > 0 else 'red'
-        ax_corr.annotate(
-            f"{latest_corr:.2f}", 
-            xy=(last_date, latest_corr), 
-            xytext=(5, 0), 
-            textcoords="offset points", 
-            fontsize=14, fontweight='bold', color=text_color, va='center'
-        )
-        ax_corr.scatter(last_date, latest_corr, color=text_color, s=60, zorder=5)
+        # 确保标注点在视图范围内
+        if last_date >= plot_df.index[0]: 
+            ax_corr.annotate(
+                f"{latest_corr:.2f}", 
+                xy=(last_date, latest_corr), 
+                xytext=(5, 0), 
+                textcoords="offset points", 
+                fontsize=14, fontweight='bold', color=text_color, va='center'
+            )
+            ax_corr.scatter(last_date, latest_corr, color=text_color, s=60, zorder=5)
 
     ax_corr.set_ylabel(f"{window}d Rolling Corr", fontsize=12)
     ax_corr.set_ylim(-1.1, 1.1)
@@ -433,49 +448,51 @@ def main():
 
     with st.sidebar:
         st.header("Settings")
-        start_date = st.date_input("Start Date", START_DEFAULT)
+        
+        # === 修改重点 1：数据抓取日期固定，只让用户选“看图日期” ===
+        # 数据开始日期：固定为 2010 年 (为了保证 Z-Score 7年回测有效)
+        DATA_START = START_DEFAULT 
+        
+        # 视图开始日期：用户可以随便选，默认看最近 2 年
+        view_start_default = date(2023, 1, 1)
+        view_start_date = st.date_input("🔎 Chart View Start Date", view_start_default, help="Select the start date for the CHARTS. (Data calculation always starts from 2010 for accuracy).")
+        
         end_date = st.date_input("End Date", END_DEFAULT)
         
         st.markdown("---")
         st.subheader("Parameters")
         
-        # === Updated: English Help & Caption ===
         window_days = st.slider(
             "Scoring Window (Days)", 
-            min_value=180, 
-            max_value=730, 
-            value=365,
-            help="Determines the baseline period for calculating the Liquidity Score.\n\n- 365 days (Default): Compares current liquidity against the past year.\n- Lower: More sensitive to recent changes (Short-term view).\n- Higher: Filters noise to show long-term trends (Long-term view)."
+            min_value=180, max_value=730, value=365,
+            help="Determines the baseline period for calculating the Liquidity Score."
         )
-        st.caption("💡 Sets the 'Memory Length' for Liquidity Scoring (Z-Score Baseline).")
         
-        # === Updated: English Help & Caption ===
         z_lookback = st.selectbox(
             "Z-Score Lookback Period",
             options=[252, 504, 756, 1260, 1764], 
             index=0, 
-            format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})",
-            help="Determines the historical window for the 'Z-Score Gap' analysis above the charts. For example, selecting 5 Years checks if the current divergence is extreme relative to the past 5 years."
+            format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})"
         )
-        st.caption("💡 Sets the historical window for Divergence (Gap) Analysis.")
 
-        if start_date >= end_date:
-            st.error("Start Date must be before End Date")
+        if view_start_date >= end_date:
+            st.error("Chart Start Date must be before End Date")
             return
+            
+        st.caption(f"Note: Internal data fetched from {DATA_START} to ensure 7-year historical accuracy.")
         st.markdown("---")
-        st.caption("Disclaimer: Not financial advice.")
 
-    all_df = build_panel(start_date, end_date)
+    # === 修改重点 2：后台抓数据始终从 2010 年开始 ===
+    all_df = build_panel(DATA_START, end_date)
+    
     if all_df.empty:
         st.error("Data Fetch Failed: DataFrame is empty.")
         return
 
     # --- Score & Signal ---
-    score_res = None
     try:
         score, label, detail_df, _ = compute_liquidity_score(all_df, LIQUIDITY_CONFIG, window_days)
         signal_data = analyze_market_signal(all_df, score)
-        score_res = (score, label, detail_df)
         
         st.markdown("### 🎯 Market Signal & Conclusion")
         c1, c2, c3, c4 = st.columns(4)
@@ -491,7 +508,6 @@ def main():
         else:
             st.warning(f"⚠️ {signal_data['sentiment']}")
 
-        # Call Analysis Section
         display_analysis_section(all_df, score, signal_data)
 
     except Exception as e:
@@ -499,40 +515,41 @@ def main():
 
     st.markdown("---")
 
-    # --- Charts ---
+    # --- Charts (修改重点 3：传入 view_start_date) ---
     st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
     
+    # 在所有 plot 函数调用中增加 view_start_date=view_start_date
     st.subheader("1. Core Liquidity Dynamics")
     c1, c2 = st.columns(2)
-    with c1: plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[Central Bank Liquidity]", z_window=z_lookback)
-    with c2: plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]", z_window=z_lookback)
+    with c1: plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[Central Bank Liquidity]", z_window=z_lookback, view_start_date=view_start_date)
+    with c2: plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]", z_window=z_lookback, view_start_date=view_start_date)
 
     st.subheader("2. Liquidity Drain & Buffer")
     c3, c4 = st.columns(2)
-    with c3: plot_overlay_with_correlation(all_df, "tga", title_prefix="[Treasury Account]", z_window=z_lookback)
-    with c4: plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo]", z_window=z_lookback)
+    with c3: plot_overlay_with_correlation(all_df, "tga", title_prefix="[Treasury Account]", z_window=z_lookback, view_start_date=view_start_date)
+    with c4: plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo]", z_window=z_lookback, view_start_date=view_start_date)
     
     st.subheader("3. Rates & Risk Sentiment")
     c5, c6 = st.columns(2)
-    with c5: plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[Risk-Free Rate]", z_window=z_lookback)
-    with c6: plot_overlay_with_correlation(all_df, "dxy", title_prefix="[US Dollar Index]", z_window=z_lookback)
+    with c5: plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[Risk-Free Rate]", z_window=z_lookback, view_start_date=view_start_date)
+    with c6: plot_overlay_with_correlation(all_df, "dxy", title_prefix="[US Dollar Index]", z_window=z_lookback, view_start_date=view_start_date)
 
     c7, c8 = st.columns(2)
-    with c7: plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]", z_window=z_lookback)
-    with c8: plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility]", z_window=z_lookback)
+    with c7: plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[Credit Spreads]", z_window=z_lookback, view_start_date=view_start_date)
+    with c8: plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility]", z_window=z_lookback, view_start_date=view_start_date)
 
     st.subheader("4. Global Liquidity & External Shocks")
     c9, c10 = st.columns(2)
-    with c9: plot_overlay_with_correlation(all_df, "ecb_assets", title_prefix="[ECB Assets]", z_window=z_lookback)
-    with c10: plot_overlay_with_correlation(all_df, "boj_assets", title_prefix="[BOJ Assets]", z_window=z_lookback)
+    with c9: plot_overlay_with_correlation(all_df, "ecb_assets", title_prefix="[ECB Assets]", z_window=z_lookback, view_start_date=view_start_date)
+    with c10: plot_overlay_with_correlation(all_df, "boj_assets", title_prefix="[BOJ Assets]", z_window=z_lookback, view_start_date=view_start_date)
     
     c11, c12 = st.columns(2)
-    with c11: plot_overlay_with_correlation(all_df, "usd_jpy", title_prefix="[USD/JPY Carry]", z_window=z_lookback)
-    with c12: plot_overlay_with_correlation(all_df, "real_yield_10y", title_prefix="[Real Yields]", z_window=z_lookback)
-
-    if score_res:
-        with st.expander("📊 See Liquidity Score Details"):
-            st.dataframe(score_res[2])
+    with c11: plot_overlay_with_correlation(all_df, "usd_jpy", title_prefix="[USD/JPY Carry]", z_window=z_lookback, view_start_date=view_start_date)
+    with c12: plot_overlay_with_correlation(all_df, "real_yield_10y", title_prefix="[Real Yields]", z_window=z_lookback, view_start_date=view_start_date)
+    
+    with st.expander("📊 See Liquidity Score Details"):
+        # 评分详情也只显示最近的数据
+        st.dataframe(detail_df)
 
 if __name__ == "__main__":
     main()
