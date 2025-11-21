@@ -109,15 +109,30 @@ def fetch_yfinance_series(symbols_dict, start_date, end_date):
     series_list = []
     for name, symbol in symbols_dict.items():
         try:
+            # 下载数据
             df = yf.download(symbol, start=start_date, end=end_date, progress=False)
+            
             if df.empty:
                 st.warning(f"yfinance 指标 {name} ({symbol}) 下载为空")
                 continue
 
+            # === 修复核心：处理 yfinance 新版的多层索引 (MultiIndex) ===
+            if isinstance(df.columns, pd.MultiIndex):
+                # 如果列是多层的 (Price, Ticker)，尝试提取该 Ticker 的一层
+                try:
+                    df = df.xs(symbol, axis=1, level=1)
+                except KeyError:
+                    # 如果 level 1 不是 ticker，尝试直接降维
+                    df.columns = df.columns.get_level_values(0)
+
+            # 优先使用 Adj Close，否则使用 Close
             if "Adj Close" in df.columns:
                 s = df["Adj Close"]
-            else:
+            elif "Close" in df.columns:
                 s = df["Close"]
+            else:
+                st.warning(f"yfinance 指标 {name} ({symbol}) 缺少 Close/Adj Close 列")
+                continue
 
             s.name = name
             series_list.append(s)
@@ -410,6 +425,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
