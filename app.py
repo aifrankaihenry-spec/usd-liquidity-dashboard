@@ -372,8 +372,8 @@ def display_analysis_section(df, score, signal_data):
 # Main Application
 # ================================
 def main():
-    st.set_page_config(page_title="USD Liquidity Dashboard", layout="wide")
-    st.title("🧊 USD Macro Liquidity Dashboard")
+    st.set_page_config(page_title="US Russell 2000 Investment Reference", layout="wide")
+    st.title("🧊 US Russell 2000 Investment Reference")
 
     with st.sidebar:
         st.header("Settings")
@@ -457,3 +457,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
