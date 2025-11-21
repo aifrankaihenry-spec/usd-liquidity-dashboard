@@ -469,7 +469,67 @@ def compute_liquidity_score(df, config=LIQUIDITY_CONFIG, window_days=365):
     detail_df = pd.DataFrame(z_details).set_index("indicator")
 
     return score, label, detail_df, (start_date, end_date)
+# ================================
+# Signal Generation
+# ================================
+def analyze_market_signal(df, score, target_col="russell2000", window=90):
+    """
+    根据流动性评分和相关性生成交易结论
+    """
+    # 1. 定义信号方向与强度
+    # Score 范围 0-100, 中位数 50
+    deviation = score - 50
+    strength = abs(deviation) * 2  # 将 0-50 的偏离放大到 0-100%
+    
+    if score >= 60:
+        signal = "LONG (Buy)"
+        bias_color = "green"
+        sentiment = "Bullish / Liquidity Supported"
+    elif score >= 52:
+        signal = "WEAK LONG"
+        bias_color = "lightgreen"
+        sentiment = "Mildly Bullish"
+    elif score <= 40:
+        signal = "SHORT (Sell)"
+        bias_color = "red"
+        sentiment = "Bearish / Liquidity Drain"
+    elif score <= 48:
+        signal = "WEAK SHORT"
+        bias_color = "lightcoral"
+        sentiment = "Mildly Bearish"
+    else:
+        signal = "NEUTRAL"
+        bias_color = "gray"
+        sentiment = "Choppy / No Clear Trend"
 
+    # 2. 寻找当前的主导因子 (Dominant Driver)
+    # 计算主要因子与 Russell 2000 的最新 90 天相关性
+    macro_vars = ["bank_reserves", "tga", "on_rrp", "t_bill_3m", "hy_spread", "dxy", "vix", "fed_balance_sheet"]
+    valid_vars = [c for c in macro_vars if c in df.columns]
+    
+    max_corr_val = 0
+    dominant_driver = "None"
+    
+    if valid_vars:
+        # 获取最近 window 天的数据进行计算
+        recent_df = df.iloc[-window:]
+        corrs = recent_df[valid_vars].corrwith(recent_df[target_col])
+        
+        # 找到绝对值最大的
+        abs_corrs = corrs.abs().sort_values(ascending=False)
+        if not abs_corrs.empty:
+            driver_name = abs_corrs.index[0]
+            driver_val = corrs[driver_name]
+            dominant_driver = f"{driver_name} ({driver_val:+.2f})"
+            max_corr_val = driver_val
+
+    return {
+        "signal": signal,
+        "strength": f"{strength:.1f}%",
+        "color": bias_color,
+        "sentiment": sentiment,
+        "driver": dominant_driver
+    }
 # ================================
 # Streamlit 主程序
 # ================================
@@ -487,6 +547,9 @@ def main():
         if start_date >= end_date:
             st.error("Start Date must be before End Date")
             return
+            
+        st.markdown("---")
+        st.caption("Disclaimer: This dashboard is for informational purposes only, not financial advice.")
 
     st.info("Fetching data from FRED & Yahoo Finance...")
     all_df = build_panel(start_date, end_date)
@@ -496,17 +559,55 @@ def main():
         return
     st.success("Data Updated Successfully")
 
-    st.subheader("Latest Data Point")
-    st.dataframe(all_df.tail(1))
-    
     # =======================
-    # Chart Section: Deep Dive
+    # 1. Calculate Score FIRST (Moved to top)
     # =======================
-    st.markdown("---")
-    st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
-    st.caption("Upper: Dual-Axis Price Action (Blue=Macro Indicator, Gray=Russell 2000) | Lower: 90-Day Rolling Correlation")
+    score_res = None
+    try:
+        # 计算分数
+        score, label, detail_df, (s, e) = compute_liquidity_score(
+            all_df, LIQUIDITY_CONFIG, window_days
+        )
+        # 生成交易结论
+        signal_data = analyze_market_signal(all_df, score)
+        score_res = (score, label, detail_df)
+        
+        # =======================
+        # 2. Display Conclusion Row (The new feature)
+        # =======================
+        st.markdown("### 🎯 Market Signal & Conclusion")
+        
+        # 使用漂亮的卡片布局
+        con_col1, con_col2, con_col3, con_col4 = st.columns(4)
+        
+        with con_col1:
+            st.metric("Recommendation", signal_data["signal"])
+        with con_col2:
+            st.metric("Signal Strength", signal_data["strength"], delta=label, delta_color="normal")
+        with con_col3:
+            st.metric("Liquidity Score", f"{score:.1f}", help="0-100, >50 is Bullish")
+        with con_col4:
+            st.metric("Dominant Driver", signal_data["driver"], help="The factor with highest correlation right now")
 
-    # 1. Core Liquidity
+        # 显示带颜色的状态条
+        if signal_data["color"] == "green":
+            st.success(f"✅ **Conclusion:** {signal_data['sentiment']}. Liquidity conditions are supportive.")
+        elif signal_data["color"] == "red":
+            st.error(f"🛑 **Conclusion:** {signal_data['sentiment']}. Liquidity is tightening, caution advised.")
+        else:
+            st.warning(f"⚠️ **Conclusion:** {signal_data['sentiment']}. Market lacks clear liquidity direction.")
+
+    except Exception as e:
+        st.error(f"Could not calculate signal: {e}")
+
+    st.markdown("---")
+
+    # =======================
+    # 3. Chart Section (Same as before)
+    # =======================
+    st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
+    st.caption("Upper: Dual-Axis Price Action | Lower: 90-Day Rolling Correlation")
+
     st.subheader("1. Core Liquidity Dynamics")
     col1, col2 = st.columns(2)
     with col1:
@@ -514,7 +615,6 @@ def main():
     with col2:
         plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[Fed Balance Sheet]")
 
-    # 2. Withdrawal & Buffer
     st.subheader("2. Liquidity Drain & Buffer")
     col3, col4 = st.columns(2)
     with col3:
@@ -522,7 +622,6 @@ def main():
     with col4:
         plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[Reverse Repo (ON RRP)]")
     
-    # 3. Rates & Risk
     st.subheader("3. Rates & Risk Sentiment")
     col5, col6 = st.columns(2)
     with col5:
@@ -537,30 +636,15 @@ def main():
         plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility (VIX)]")
 
     # =======================
-    # Liquidity Score
+    # 4. Detail Table (Optional, at bottom)
     # =======================
-    st.markdown("---")
-    st.header("🧠 Macro Liquidity Score")
-
-    try:
-        score, label, detail_df, (s, e) = compute_liquidity_score(
-            all_df, LIQUIDITY_CONFIG, window_days
-        )
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Liquidity Score", f"{score:.1f}")
-        with c2:
-            st.metric("Regime Status", label)
-
-        st.caption(f"Scoring Period: {s.date()} → {e.date()}")
-        st.dataframe(detail_df)
-
-    except Exception as e:
-        st.error(f"Score calculation failed: {e}")
+    if score_res:
+        with st.expander("📊 See Liquidity Score Details"):
+            st.dataframe(score_res[2])
 
 if __name__ == "__main__":
     main()
+
 
 
 
