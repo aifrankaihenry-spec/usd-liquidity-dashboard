@@ -30,7 +30,6 @@ FRED_SERIES = {
     "t_bill_1m":        "DGS1MO",
     "t_bill_3m":        "DGS3MO",
     "hy_spread":        "BAMLH0A0HYM2",
-    "dxy":              "TWEXBMTH",
     "vix":              "VIXCLS",
     "repo_gc":          "TGCRRATE",     # Tri-party GC Repo Rate
 
@@ -40,6 +39,7 @@ FRED_SERIES = {
 
 YF_SYMBOLS = {
     "russell2000": "^RUT",   # stooq 格式
+    "dxy": "DX-Y.NYB"
 }
 
 
@@ -425,6 +425,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
