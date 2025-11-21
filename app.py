@@ -252,6 +252,7 @@ def plot_equity_indices(df):
 def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, title_prefix=""):
     """
     Plot Overlay: Indicator vs Target with Rolling Correlation
+    Includes dynamic labeling of the latest correlation value.
     """
     if indicator_col not in df.columns or target_col not in df.columns:
         st.warning(f"Missing data: {indicator_col} or {target_col}")
@@ -261,8 +262,19 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     if plot_df.empty:
         return
 
+    # Calculate Rolling Correlation
     rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
+    
+    # Get the latest valid correlation value
+    valid_corr = rolling_corr.dropna()
+    if valid_corr.empty:
+        latest_corr = 0.0
+        last_date = plot_df.index[-1]
+    else:
+        latest_corr = valid_corr.iloc[-1]
+        last_date = valid_corr.index[-1]
 
+    # Create Figure
     fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
                                        gridspec_kw={'height_ratios': [2, 1]})
     
@@ -270,27 +282,50 @@ def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", w
     color_ind = 'tab:blue'
     color_target = 'tab:gray'
     
+    # Left Axis
     ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=1.5)
     ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold')
     ax1.tick_params(axis='y', labelcolor=color_ind)
     
+    # Right Axis
     ax2 = ax1.twinx()
     ax2.plot(plot_df.index, plot_df[target_col], color=color_target, label=target_col, linestyle='--', alpha=0.6, linewidth=1)
     ax2.set_ylabel(target_col, color=color_target, fontweight='bold')
     ax2.tick_params(axis='y', labelcolor=color_target)
     
-    # Set Title (English)
-    title_text = f"{title_prefix} {indicator_col} vs {target_col}"
+    # --- Dynamic Title with Score ---
+    # 标题格式：[Category] Indicator vs Target (Corr: +0.85)
+    corr_str = f"{latest_corr:+.2f}" # 强制显示正负号
+    title_text = f"{title_prefix} {indicator_col} vs {target_col} (Corr: {corr_str})"
+    
+    # 根据相关性正负改变标题中数值部分的颜色需要复杂的富文本支持，这里简单处理：
+    # 我们直接把标题设为黑色，但在下面标注颜色
     ax1.set_title(title_text, fontsize=16, fontweight='bold', pad=15)
     ax1.grid(True, linestyle='--', alpha=0.3)
 
     # --- Bottom Chart: Rolling Correlation ---
-    corr_vals = rolling_corr.dropna()
-    if not corr_vals.empty:
-        ax_corr.plot(corr_vals.index, corr_vals, color='black', linewidth=1)
-        ax_corr.fill_between(corr_vals.index, 0, corr_vals, where=(corr_vals > 0), color='green', alpha=0.3, label='Positive Corr')
-        ax_corr.fill_between(corr_vals.index, 0, corr_vals, where=(corr_vals < 0), color='red', alpha=0.3, label='Negative Corr')
-    
+    if not valid_corr.empty:
+        ax_corr.plot(valid_corr.index, valid_corr, color='black', linewidth=1)
+        
+        # Fill areas
+        ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr > 0), color='green', alpha=0.3)
+        ax_corr.fill_between(valid_corr.index, 0, valid_corr, where=(valid_corr < 0), color='red', alpha=0.3)
+        
+        # === 【新增功能】在曲线最右端添加数值标签 ===
+        text_color = 'green' if latest_corr > 0 else 'red'
+        ax_corr.annotate(
+            f"{latest_corr:.2f}", 
+            xy=(last_date, latest_corr), 
+            xytext=(5, 0),             # 稍微向右偏移 5 个点
+            textcoords="offset points", 
+            fontsize=12, 
+            fontweight='bold', 
+            color=text_color,
+            va='center'
+        )
+        # 画一个圆点标记最后的位置
+        ax_corr.scatter(last_date, latest_corr, color=text_color, s=50, zorder=5)
+
     ax_corr.set_ylabel(f"{window}d Rolling Corr", fontsize=10)
     ax_corr.set_ylim(-1.1, 1.1)
     ax_corr.axhline(0, color='black', linestyle='-', linewidth=0.5)
@@ -526,6 +561,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
