@@ -427,9 +427,6 @@ def display_analysis_section(df, score, signal_data):
 # ================================
 # Main Application
 # ================================
-# ================================
-# Main Application
-# ================================
 def main():
     st.set_page_config(page_title="US Russell 2000 Investment Reference", layout="wide")
     st.title("🧊 US Russell 2000 Investment Reference")
@@ -442,25 +439,25 @@ def main():
         st.markdown("---")
         st.subheader("Parameters")
         
-        # === 修改这里：增加了 help 参数和下方的 caption ===
+        # === Updated: English Help & Caption ===
         window_days = st.slider(
             "Scoring Window (Days)", 
             min_value=180, 
             max_value=730, 
             value=365,
-            help="决定使用过去多少天的数据作为‘基准’来计算评分。\n\n- 365天 (默认): 将今天的流动性与过去一年对比。\n- 调小: 对近期变化更敏感（短线视角）。\n- 调大: 过滤短期噪音，看长期趋势（长线视角）。"
+            help="Determines the baseline period for calculating the Liquidity Score.\n\n- 365 days (Default): Compares current liquidity against the past year.\n- Lower: More sensitive to recent changes (Short-term view).\n- Higher: Filters noise to show long-term trends (Long-term view)."
         )
-        st.caption("💡 决定流动性评分的“记忆长度” (Z-Score 基准)。")
+        st.caption("💡 Sets the 'Memory Length' for Liquidity Scoring (Z-Score Baseline).")
         
-        # === Z-Score Window Selection ===
+        # === Updated: English Help & Caption ===
         z_lookback = st.selectbox(
             "Z-Score Lookback Period",
             options=[252, 504, 756, 1260, 1764], 
             index=0, 
             format_func=lambda x: f"{x} Days ({x//252} Year{'s' if x>252 else ''})",
-            help="决定图表上方 '背离监测 (Gap)' 的计算周期。比如选择 5 年，就是看当前的背离程度在过去 5 年里算不算极端。"
+            help="Determines the historical window for the 'Z-Score Gap' analysis above the charts. For example, selecting 5 Years checks if the current divergence is extreme relative to the past 5 years."
         )
-        st.caption("💡 决定背离监测 (Gap) 的回测周期。")
+        st.caption("💡 Sets the historical window for Divergence (Gap) Analysis.")
 
         if start_date >= end_date:
             st.error("Start Date must be before End Date")
@@ -482,7 +479,7 @@ def main():
         
         st.markdown("### 🎯 Market Signal & Conclusion")
         c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Signal for IWM", signal_data["signal"], help="Specific to Russell 2000")
+        with c1: st.metric("Signal for IWM", signal_data["signal"], help="Specific to Russell 2000 Small Caps")
         with c2: st.metric("Signal Strength", signal_data["strength"], delta=label, delta_color="normal")
         with c3: st.metric("Liquidity Score", f"{score:.1f}")
         with c4: st.metric("Dominant Driver", signal_data["driver"])
