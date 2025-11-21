@@ -551,16 +551,19 @@ def main():
         st.markdown("---")
         st.caption("Disclaimer: This dashboard is for informational purposes only, not financial advice.")
 
-    st.info("Fetching data from FRED & Yahoo Finance...")
+    # 删除了 st.info("Fetching...")
+    
+    # 获取数据
     all_df = build_panel(start_date, end_date)
     
     if all_df.empty:
         st.error("Data Fetch Failed: DataFrame is empty.")
         return
-    st.success("Data Updated Successfully")
+    
+    # 删除了 st.success("Data Updated Successfully")
 
     # =======================
-    # 1. Calculate Score FIRST (Moved to top)
+    # 1. Calculate Score FIRST
     # =======================
     score_res = None
     try:
@@ -573,11 +576,10 @@ def main():
         score_res = (score, label, detail_df)
         
         # =======================
-        # 2. Display Conclusion Row (The new feature)
+        # 2. Display Conclusion Row
         # =======================
         st.markdown("### 🎯 Market Signal & Conclusion")
         
-        # 使用漂亮的卡片布局
         con_col1, con_col2, con_col3, con_col4 = st.columns(4)
         
         with con_col1:
@@ -603,7 +605,7 @@ def main():
     st.markdown("---")
 
     # =======================
-    # 3. Chart Section (Same as before)
+    # 3. Chart Section
     # =======================
     st.header("🔬 Deep Dive: Macro Factors vs Russell 2000")
     st.caption("Upper: Dual-Axis Price Action | Lower: 90-Day Rolling Correlation")
@@ -636,7 +638,7 @@ def main():
         plot_overlay_with_correlation(all_df, "vix", title_prefix="[Volatility (VIX)]")
 
     # =======================
-    # 4. Detail Table (Optional, at bottom)
+    # 4. Detail Table
     # =======================
     if score_res:
         with st.expander("📊 See Liquidity Score Details"):
@@ -644,6 +646,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
