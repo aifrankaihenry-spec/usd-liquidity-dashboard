@@ -38,6 +38,7 @@ FRED_SERIES = {
     "sp500":            "SP500",        # S&P 500 :contentReference[oaicite:0]{index=0}
     "nasdaq":           "NASDAQCOM",    # Nasdaq Composite :contentReference[oaicite:1]{index=1}
     "dow":              "DJIA",         # Dow Jones Industrial Average :contentReference[oaicite:2]{index=2}
+    "russell2000":      "RUT",
 
 
 
@@ -45,7 +46,7 @@ FRED_SERIES = {
 
 
 YF_SYMBOLS = {
-    "russell2000": "^RUT",   # Russell 2000 指数 from Yahoo
+   
 }
 
 
@@ -208,6 +209,7 @@ def plot_onrrp_tga(df):
 
 
 def plot_equity_indices(df):
+    # 这里的列名必须和 FRED_SERIES 里的 key 完全一致
     cols = ["sp500", "nasdaq", "dow", "russell2000"]
     available = [c for c in cols if c in df.columns]
 
@@ -220,6 +222,7 @@ def plot_equity_indices(df):
         st.warning("指数数据为空")
         return
 
+    # 归一化（从 1 开始）
     norm = data / data.iloc[0]
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -231,6 +234,7 @@ def plot_equity_indices(df):
     ax.legend()
     fig.tight_layout()
     st.pyplot(fig)
+
 
 
 # ================================
@@ -411,6 +415,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
