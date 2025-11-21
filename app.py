@@ -34,19 +34,11 @@ FRED_SERIES = {
     "vix":              "VIXCLS",
     "repo_gc":          "TGCRRATE",     # Tri-party GC Repo Rate
 
-    # ⬇️ 这里是新增的三大股指（FRED 代码）
-    "sp500":            "SP500",        # S&P 500 :contentReference[oaicite:0]{index=0}
-    "nasdaq":           "NASDAQCOM",    # Nasdaq Composite :contentReference[oaicite:1]{index=1}
-    "dow":              "DJIA",         # Dow Jones Industrial Average :contentReference[oaicite:2]{index=2}
-    "russell2000":      "RUT",
-
-
-
 }
 
 
 YF_SYMBOLS = {
-   
+    "russell2000": "^RUT",   # Russell 2000 指数
 }
 
 
@@ -209,31 +201,31 @@ def plot_onrrp_tga(df):
 
 
 def plot_equity_indices(df):
-    # 这里的列名必须和 FRED_SERIES 里的 key 完全一致
-    cols = ["sp500", "nasdaq", "dow", "russell2000"]
-    available = [c for c in cols if c in df.columns]
-
-    if not available:
-        st.warning("指数数据不足")
+    # 现在只看 Russell 2000
+    col = "russell2000"
+    if col not in df.columns:
+        st.warning("Russell 2000 数据不足，无法绘制。")
         return
 
-    data = df[available].dropna(how="all")
-    if data.empty:
-        st.warning("指数数据为空")
+    series = df[col].dropna()
+    if series.empty:
+        st.warning("Russell 2000 数据为空。")
         return
 
-    # 归一化（从 1 开始）
-    norm = data / data.iloc[0]
+    # 归一化，从 1 开始
+    norm = series / series.iloc[0]
 
     fig, ax = plt.subplots(figsize=(10, 4))
-    for col in norm.columns:
-        ax.plot(norm.index, norm[col], label=col)
+    ax.plot(norm.index, norm.values, label="russell2000")
 
-    ax.set_title("US Equity Indices (Normalized)")
+    ax.set_title("Russell 2000 Index (Normalized)")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Index (normalized to 1)")
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend()
     fig.tight_layout()
     st.pyplot(fig)
+
 
 
 
@@ -334,6 +326,7 @@ def main():
     st.subheader("最新一行数据")
     st.dataframe(all_df.tail(1))
     
+    
 
 
     # =======================
@@ -388,8 +381,9 @@ def main():
             rolling=7,
         )
 
-    st.header("📈 美股主要指数（归一化）")
+    st.header("📈 Russell 2000（归一化）")
     plot_equity_indices(all_df)
+
 
     # =======================
     # 流动性评分
@@ -415,6 +409,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
