@@ -316,11 +316,19 @@ def _render_indicator_card(title, tag, value, distinct_impact, watch_item):
         st.markdown(f"**💥 Impact on IWM:** {distinct_impact}")
         st.markdown(f"**👀 Watch:** *{watch_item}*")
 
+# ================================
+# Narrative & Analysis Generator (Smart Version)
+# ================================
 def display_analysis_section(df, score, signal_data):
-    if df.empty: return
+    """
+    根据数据自动生成投资分析文案 (智能切换版)
+    """
+    if df.empty:
+        return
 
     st.markdown("### 📝 Strategic Analysis & Key Watchlist")
     
+    # --- 1. 自动生成宏观总结 ---
     driver_raw = str(signal_data.get('driver', 'None'))
     driver_name = driver_raw.split(" ")[0] if " " in driver_raw else driver_raw
     driver_desc = _get_driver_narrative(driver_name)
@@ -334,34 +342,57 @@ def display_analysis_section(df, score, signal_data):
     geo_context = """
     **🌐 Global Context & Geopolitics:**
     With the current disconnect between US economic resilience and global slowdowns (China/Europe), 
-    volatility in **USD/JPY** and **Oil prices** remains a key external risk. 
-    Investors should monitor if global central banks (BOJ/ECB) diverge from the Fed, 
-    which could trigger rapid capital flow reversals affecting US small caps.
+    volatility in **Currency Markets (Yen/Euro)** and **Oil** remains a key external risk. 
     """
+    
     st.info(narrative + geo_context)
 
+    # --- 2. 准备数据 ---
     latest = df.iloc[-1]
     val_tbill = latest.get('t_bill_3m', 0)
-    val_jpy = latest.get('usd_jpy', 0)
     val_tga = latest.get('tga', 0)
     val_spread = latest.get('hy_spread', 0)
     
-    # Defined variables to prevent syntax errors
+    # --- 3. 智能判断：卡片 2 显示日元还是美元/欧元？---
+    # 逻辑：对比最近 90 天的相关性，谁大显示谁
+    recent_df = df.iloc[-90:]
+    corr_jpy = recent_df['usd_jpy'].corr(recent_df['russell2000']) if 'usd_jpy' in df else 0
+    corr_dxy = recent_df['dxy'].corr(recent_df['russell2000']) if 'dxy' in df else 0
+    
+    # 默认显示日元
+    card2_title = "🇯🇵 2. USD/JPY (Carry Trade)"
+    card2_tag = "External Risk"
+    card2_val = f"{latest.get('usd_jpy', 0):.2f}"
+    card2_impact = "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM."
+    card2_watch = "Watch for: BOJ rate hikes or intervention."
+    
+    # 如果 DXY (代表欧元/全球货币) 相关性更强，且 DXY 在涨（风险高），则切换为 DXY 卡片
+    # 注意：DXY 中 57% 是欧元。DXY 涨 = 欧元跌。
+    if abs(corr_dxy) > abs(corr_jpy):
+        card2_title = "🌍 2. DXY (Euro/Global FX)"
+        card2_tag = "Global Capital Flow"
+        card2_val = f"{latest.get('dxy', 0):.2f}"
+        card2_impact = "A rising Dollar (often due to weak Euro/CNY) tightens global financial conditions, hurting earnings and causing capital flight from risk assets."
+        card2_watch = "Watch for: ECB/PBOC Policy divergence vs Fed."
+
+    # --- 4. 定义其他固定卡片文案 ---
     txt_us_impact = "The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings."
     txt_us_watch = "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
-    txt_jpy_impact = "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM."
-    txt_jpy_watch = "Watch for: BOJ rate hikes or intervention."
+    
     txt_tga_impact = "If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down)."
     txt_tga_watch = "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
+    
     txt_credit_impact = "The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly."
     txt_credit_watch = "Watch for: Corporate defaults or weak earnings guidance."
 
+    # --- 5. 渲染 ---
     st.subheader("🔍 Critical Indicators to Watch")
     c1, c2 = st.columns(2)
     
     with c1:
         _render_indicator_card("🇺🇸 1. US Rates", "High Impact", f"{val_tbill:.2f}%", txt_us_impact, txt_us_watch)
-        _render_indicator_card("🇯🇵 2. USD/JPY", "External Risk", f"{val_jpy:.2f}", txt_jpy_impact, txt_jpy_watch)
+        # 这里使用刚才计算出来的动态变量
+        _render_indicator_card(card2_title, card2_tag, card2_val, card2_impact, card2_watch)
 
     with c2:
         tga_dis = val_tga / 1000 if pd.notnull(val_tga) else 0
@@ -457,4 +488,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
