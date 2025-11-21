@@ -242,6 +242,63 @@ def plot_equity_indices(df):
     fig.tight_layout()
     st.pyplot(fig)
 
+def plot_overlay_with_correlation(df, indicator_col, target_col="russell2000", window=90, title_prefix=""):
+    """
+    画一张组合图：
+    - 上半部分：指标(左轴) vs Russell 2000(右轴)
+    - 下半部分：90天滚动相关性
+    """
+    if indicator_col not in df.columns or target_col not in df.columns:
+        st.warning(f"缺少数据：{indicator_col} 或 {target_col}")
+        return
+
+    # 准备数据
+    plot_df = df[[indicator_col, target_col]].dropna()
+    if plot_df.empty:
+        return
+
+    # 计算滚动相关性
+    rolling_corr = plot_df[indicator_col].rolling(window=window).corr(plot_df[target_col])
+
+    # 创建画布：2个子图，高度比例 2:1
+    fig, (ax1, ax_corr) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, 
+                                       gridspec_kw={'height_ratios': [2, 1]})
+    
+    # --- 上半部分：双轴走势对比 ---
+    color_ind = 'tab:blue'
+    color_target = 'tab:gray'
+    
+    # 左轴：宏观指标
+    ax1.plot(plot_df.index, plot_df[indicator_col], color=color_ind, label=indicator_col, linewidth=1.5)
+    ax1.set_ylabel(indicator_col, color=color_ind, fontweight='bold')
+    ax1.tick_params(axis='y', labelcolor=color_ind)
+    
+    # 右轴：Russell 2000
+    ax2 = ax1.twinx()
+    ax2.plot(plot_df.index, plot_df[target_col], color=color_target, label=target_col, linestyle='--', alpha=0.6, linewidth=1)
+    ax2.set_ylabel(target_col, color=color_target, fontweight='bold')
+    ax2.tick_params(axis='y', labelcolor=color_target)
+    
+    ax1.set_title(f"{title_prefix} {indicator_col} vs {target_col}", fontsize=14)
+    ax1.grid(True, linestyle='--', alpha=0.3)
+
+    # --- 下半部分：滚动相关性 ---
+    # 根据正负值填充颜色
+    corr_vals = rolling_corr.dropna()
+    if not corr_vals.empty:
+        ax_corr.plot(corr_vals.index, corr_vals, color='black', linewidth=1)
+        ax_corr.fill_between(corr_vals.index, 0, corr_vals, where=(corr_vals > 0), color='green', alpha=0.3, label='Positive Corr')
+        ax_corr.fill_between(corr_vals.index, 0, corr_vals, where=(corr_vals < 0), color='red', alpha=0.3, label='Negative Corr')
+    
+    ax_corr.set_ylabel(f"{window}d Rolling Corr", fontsize=10)
+    ax_corr.set_ylim(-1.1, 1.1)
+    ax_corr.axhline(0, color='black', linestyle='-', linewidth=0.5)
+    ax_corr.grid(True, linestyle='--', alpha=0.3)
+    
+    # 调整布局
+    plt.subplots_adjust(hspace=0.05)
+    st.pyplot(fig)
+
 # ================================
 # 新增：相关性分析函数
 # ================================
@@ -412,58 +469,44 @@ def main():
     # =======================
     # 图表区
     # =======================
-    st.header("📊 流动性 & 利率")
+    # ... (在 st.dataframe(all_df.tail(1)) 之后)
+
+    # =======================
+    # 图表区：深度相关性分析
+    # =======================
+    st.header("🔬 深度透视：宏观因子 vs Russell 2000")
+    st.caption("上图：双轴价格走势（蓝色=宏观指标，灰色虚线=Russell 2000） | 下图：90天滚动相关性（红色=负相关，绿色=正相关）")
+
+    # 1. 核心流动性：准备金
+    st.subheader("1. 核心流动性")
     col1, col2 = st.columns(2)
     with col1:
-        plot_series(
-            all_df,
-            ["bank_reserves", "fed_balance_sheet"],
-            title="Bank Reserves vs Fed Balance Sheet",
-            ylabel="Millions",
-            rolling=7,
-        )
+        plot_overlay_with_correlation(all_df, "bank_reserves", title_prefix="[央行水龙头]")
     with col2:
-        plot_onrrp_tga(all_df)
+        plot_overlay_with_correlation(all_df, "fed_balance_sheet", title_prefix="[美联储资产表]")
 
+    # 2. 抽水效应：TGA & ON RRP
+    st.subheader("2. 抽水与缓冲")
     col3, col4 = st.columns(2)
     with col3:
-        plot_series(
-            all_df,
-            ["sofr", "t_bill_1m", "t_bill_3m", "repo_gc"],
-            title="SOFR / T-bill / Repo",
-            ylabel="Rate (%)",
-            rolling=7,
-        )
+        plot_overlay_with_correlation(all_df, "tga", title_prefix="[财政部账户]")
     with col4:
-        plot_series(
-            all_df,
-            ["hy_spread"],
-            title="HY Spread",
-            ylabel="bps",
-            rolling=7,
-        )
-
+        plot_overlay_with_correlation(all_df, "on_rrp", title_prefix="[逆回购工具]")
+    
+    # 3. 利率与避险
+    st.subheader("3. 利率痛点 & 避险情绪")
     col5, col6 = st.columns(2)
     with col5:
-        plot_series(
-            all_df,
-            ["dxy"],
-            title="DXY",
-            ylabel="Index",
-            rolling=7,
-        )
+        # 这里特意选了 T-Bill 3M，因为你刚才发现它相关性最高
+        plot_overlay_with_correlation(all_df, "t_bill_3m", title_prefix="[短期无风险利率]")
     with col6:
-        plot_series(
-            all_df,
-            ["vix"],
-            title="VIX",
-            ylabel="Index",
-            rolling=7,
-        )
+        plot_overlay_with_correlation(all_df, "dxy", title_prefix="[美元指数]")
 
-    st.header("📈 Russell 2000（归一化）")
-    plot_equity_indices(all_df)
-
+    col7, col8 = st.columns(2)
+    with col7:
+        plot_overlay_with_correlation(all_df, "hy_spread", title_prefix="[信用利差]")
+    with col8:
+        plot_overlay_with_correlation(all_df, "vix", title_prefix="[恐慌指数]")
 
     # =======================
     # 流动性评分
@@ -519,6 +562,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
