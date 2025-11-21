@@ -545,27 +545,35 @@ def analyze_market_signal(df, score, target_col="russell2000", window=90):
 # Narrative & Analysis Generator
 # ================================
 # ================================
-# Narrative & Analysis Generator
+# Narrative & Analysis Generator (Stable Version)
 # ================================
 def display_analysis_section(df, score, signal_data):
     """
-    根据数据自动生成投资分析文案
+    根据数据自动生成投资分析文案 (防报错版)
     """
+    if df.empty:
+        return
+
     st.markdown("### 📝 Strategic Analysis & Key Watchlist")
     
     # --- 1. 自动生成宏观总结 ---
-    # 确保 signal_data['driver'] 存在且是字符串
+    # 安全获取 driver 名称
     driver_raw = str(signal_data.get('driver', 'None'))
-    driver_name = driver_raw.split(" ")[0] if " " in driver_raw else driver_raw
+    if " " in driver_raw:
+        driver_name = driver_raw.split(" ")[0]
+    else:
+        driver_name = driver_raw
     
-    # 基础叙事模板 (使用三引号，允许换行)
+    driver_desc = _get_driver_narrative(driver_name)
+    
+    # 宏观叙事文案
     narrative = f"""
     **Current Market Regime:** The market is currently in a **{signal_data['sentiment']}** state (Score: {score:.1f}). 
     The Russell 2000 is showing highest sensitivity to **{driver_name}**, indicating that 
-    **{_get_driver_narrative(driver_name)}** is the primary theme driving price action.
+    **{driver_desc}** is the primary theme driving price action.
     """
     
-    # 结合地缘政治的通用提示
+    # 地缘政治文案
     geo_context = """
     **🌐 Global Context & Geopolitics:**
     With the current disconnect between US economic resilience and global slowdowns (China/Europe), 
@@ -576,52 +584,74 @@ def display_analysis_section(df, score, signal_data):
     
     st.info(narrative + geo_context)
 
-    # --- 2. 逐条重点指标分析 ---
+    # --- 2. 准备数据 (防止 NaN 报错) ---
+    latest = df.iloc[-1]
+    
+    # 安全获取数值，如果取不到默认为 0
+    val_tbill = latest['t_bill_3m'] if 't_bill_3m' in latest and pd.notnull(latest['t_bill_3m']) else 0
+    val_jpy = latest['usd_jpy'] if 'usd_jpy' in latest and pd.notnull(latest['usd_jpy']) else 0
+    val_tga = latest['tga'] if 'tga' in latest and pd.notnull(latest['tga']) else 0
+    val_spread = latest['hy_spread'] if 'hy_spread' in latest and pd.notnull(latest['hy_spread']) else 0
+    
+    # --- 3. 定义长文本变量 (防止 SyntaxError) ---
+    # 1. US Rates
+    txt_us_impact = "The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings."
+    txt_us_watch = "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
+    
+    # 2. USD/JPY
+    txt_jpy_impact = "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM."
+    txt_jpy_watch = "Watch for: BOJ rate hikes or intervention."
+    
+    # 3. Liquidity (TGA)
+    txt_tga_impact = "If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down)."
+    txt_tga_watch = "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
+    
+    # 4. Credit Spreads
+    txt_credit_impact = "The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly."
+    txt_credit_watch = "Watch for: Corporate defaults or weak earnings guidance."
+
+    # --- 4. 渲染卡片布局 ---
     st.subheader("🔍 Critical Indicators to Watch")
     
     col1, col2 = st.columns(2)
-    
-    # 获取最新数据 (防止 key error)
-    latest = df.iloc[-1]
     
     with col1:
         _render_indicator_card(
             "🇺🇸 1. US Rates (T-Bills / Real Yields)", 
             "High Impact",
-            f"Current T-Bill 3M: {latest.get('t_bill_3m', 0):.2f}%",
-            # 使用三引号修复潜在的换行报错
-            """The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings.""",
-            "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
+            f"Current T-Bill 3M: {val_tbill:.2f}%",
+            txt_us_impact,
+            txt_us_watch
         )
         
         _render_indicator_card(
             "🇯🇵 2. USD/JPY (Carry Trade)", 
             "External Risk",
-            f"Current USD/JPY: {latest.get('usd_jpy', 0):.2f}",
-            """A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM.""",
-            "Watch for: BOJ rate hikes or intervention."
+            f"Current USD/JPY: {val_jpy:.2f}",
+            txt_jpy_impact,
+            txt_jpy_watch
         )
 
     with col2:
-        tga_val = latest.get('tga', 0) / 1000 if pd.notnull(latest.get('tga')) else 0
+        tga_display = val_tga / 1000  # 转换为 Billion
         _render_indicator_card(
             "🏦 3. Liquidity Plumber (ON RRP & TGA)", 
             "Flow Dynamics",
-            f"TGA Level: ${tga_val:.0f}B",
-            """If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down).""",
-            "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
+            f"TGA Level: ${tga_display:.0f}B",
+            txt_tga_impact,
+            txt_tga_watch
         )
         
         _render_indicator_card(
             "📉 4. Credit Spreads (HY Spread)", 
             "Recession Alarm",
-            f"Current Spread: {latest.get('hy_spread', 0):.0f} bps",
-            """The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly.""",
-            "Watch for: Corporate defaults or weak earnings guidance."
+            f"Current Spread: {val_spread:.0f} bps",
+            txt_credit_impact,
+            txt_credit_watch
         )
 
+# 辅助函数 1：获取驱动因子描述
 def _get_driver_narrative(driver):
-    # 简单的映射逻辑
     mapping = {
         "t_bill_3m": "Fed Policy & Cost of Capital",
         "bank_reserves": "Central Bank Liquidity Support",
@@ -631,55 +661,19 @@ def _get_driver_narrative(driver):
         "usd_jpy": "Global Carry Trade Dynamics",
         "vix": "Market Fear & Hedging Demand",
         "fed_balance_sheet": "Quantitative Tightening (QT)",
-        "on_rrp": "Liquidity Buffer Dynamics"
+        "on_rrp": "Liquidity Buffer Dynamics",
+        "ecb_assets": "Global Central Bank Liquidity (ECB)",
+        "boj_assets": "Global Central Bank Liquidity (BOJ)",
+        "real_yield_10y": "Real Cost of Capital"
     }
     return mapping.get(driver, "Macro Factors")
 
+# 辅助函数 2：渲染单个卡片
 def _render_indicator_card(title, tag, value, distinct_impact, watch_item):
     with st.expander(f"{title}", expanded=True):
         st.markdown(f"**Status:** `{tag}` | **Value:** `{value}`")
         st.markdown(f"**💥 Impact on IWM:** {distinct_impact}")
         st.markdown(f"**👀 Watch:** *{watch_item}*")
-
-    # --- 2. 逐条重点指标分析 ---
-    st.subheader("🔍 Critical Indicators to Watch")
-    
-    col1, col2 = st.columns(2)
-    
-    # 获取最新数据
-    latest = df.iloc[-1]
-    
-    with col1:
-        _render_indicator_card(
-            "🇺🇸 1. US Rates (T-Bills / Real Yields)", 
-            "High Impact",
-            f"Current T-Bill 3M: {latest.get('t_bill_3m', 0):.2f}%",
-            "The Russell 2000 is composed of floating-rate debt zombies. If Rates stay high, refinancing walls will crush earnings.",
-            "Watch for: CPI prints & Fed 'Higher for Longer' rhetoric."
-        )
-        
-        _render_indicator_card(
-            "🇯🇵 2. USD/JPY (Carry Trade)", 
-            "External Risk",
-            f"Current USD/JPY: {latest.get('usd_jpy', 0):.2f}",
-            "A rapid drop in USD/JPY (Yen strength) signals a Carry Trade unwind. This forces hedge funds to liquidate risk assets like IWM.",
-            "Watch for: BOJ rate hikes or intervention."
-        )
-
-    with col2:
-        _render_indicator_card(
-            "🏦 3. Liquidity Plumber (ON RRP & TGA)", 
-            "Flow Dynamics",
-            f"TGA Level: ${latest.get('tga', 0)/1000:.0f}B",
-            "If TGA rises (Treasury issuing debt) while ON RRP is flat/empty, liquidity is drained directly from Bank Reserves (Stocks down).",
-            "Watch for: Treasury Quarterly Refunding Announcement (QRA)."
-        )
-        
-        _render_indicator_card(
-            "📉 4. Credit Spreads (HY Spread)", 
-            "Recession Alarm",
-            f"Current Spread: {latest.get('hy_spread', 0):.0f} bps",
-            "The ultimate truth-teller. If Spreads widen (>400bps), the 'Soft Landing' narrative is dead. IWM will underperform SPY significantly.",
             "
 # ================================
 # Streamlit 主程序
@@ -826,6 +820,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
